@@ -43,6 +43,10 @@
   .head p { margin: 4px 0 0; color: var(--text-2); }
   .grid { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid .full { grid-column: 1 / -1; }
+  .grid.split { grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); align-items: start; }
+  form.stack { grid-template-columns: 1fr; }
+  form.stack .actions { grid-column: auto; }
+  .pair { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; padding: 14px; border-radius: 10px; background: var(--green-tint); }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 0; }
   .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
   .card h2 small { color: var(--muted); font-weight: 400; margin-left: 4px; }
@@ -106,7 +110,7 @@
     nav a { white-space: nowrap; }
     nav .group { display: none; }
     main { padding: 20px 16px 40px; }
-    .grid { grid-template-columns: 1fr; }
+    .grid, .grid.split, .pair { grid-template-columns: 1fr; }
     .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     form { grid-template-columns: 1fr; }
     form .full, .actions { grid-column: span 1; }
@@ -132,7 +136,10 @@
       <div class="group">Business</div>
       <a href="#sales"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>Sales</a>
       <a href="#new-sale" onclick="openSale(); return false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2h16v20l-3-2-3 2-2-2-2 2-3-2-3 2z"/><path d="M12 7v6M9 10h6"/></svg>New sale</a>
-      <a href="#directory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Suppliers &amp; Rx</a>
+      <div class="group">People</div>
+      <a href="#employees"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Employees</a>
+      <a href="#suppliers-view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Suppliers</a>
+      <a href="#rx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v3H9zM9 11h6M9 15h4"/></svg>Prescriptions</a>
       <div class="group">Insights</div>
       <a href="#analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/></svg>Analytics</a>
       <a href="#graph-view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.2 7.3 10.6 16M16.8 7.3 13.4 16M7.5 6h9"/></svg>Graph</a>
@@ -206,6 +213,12 @@
         <form id="saleForm">
           <label>Customer<select name="customer" id="customerSelect" required></select></label>
           <label>Handled by<select name="employee" id="employeeSelect" required></select></label>
+          <div class="full" id="newCustomer" hidden>
+            <div class="pair">
+              <label>New customer name<input name="new_name" maxlength="100"></label>
+              <label>Phone <span class="empty">(optional)</span><input name="new_phone" inputmode="numeric" pattern="\d{10}" maxlength="10" placeholder="10 digits"></label>
+            </div>
+          </div>
           <label>Sale date<input name="date" type="date" required></label>
           <label>Payment mode<select name="mode"><option>Cash</option><option>UPI</option><option>Card</option></select></label>
           <label>Payment status<select name="status"><option>Paid</option><option>Pending</option></select></label>
@@ -224,18 +237,50 @@
       </div>
     </section>
 
-    <section class="view" id="directory">
-      <div class="head"><h1>Suppliers &amp; Prescriptions</h1><p>Who supplies what, and prescriptions on record.</p></div>
-      <div class="grid">
-        <div class="card full"><h2>Suppliers</h2><div class="scroll"><table>
-          <thead><tr><th>Supplier</th><th>Phone</th><th class="num">Medicines</th><th>Supplies</th></tr></thead>
-          <tbody id="suppliers"></tbody>
+    <section class="view" id="employees">
+      <div class="head"><h1>Employees</h1><p>Pharmacy staff and the number of sales each has handled.</p></div>
+      <div class="grid split">
+        <div class="card"><div class="scroll"><table>
+          <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th class="num">Sales handled</th><th></th></tr></thead>
+          <tbody id="employeeRows"></tbody>
         </table></div></div>
-        <div class="card full"><h2>Prescriptions</h2><div class="scroll"><table>
-          <thead><tr><th>ID</th><th>Customer</th><th>Doctor</th><th>Date</th></tr></thead>
-          <tbody id="prescriptions"></tbody>
-        </table></div></div>
+        <div class="card">
+          <h2 id="employeeFormTitle">Add employee</h2>
+          <form id="employeeForm" class="stack">
+            <label>Name<input name="name" maxlength="100" required></label>
+            <label>Phone<input name="phone" inputmode="numeric" pattern="\d{10}" maxlength="10" placeholder="10 digits" required></label>
+            <div class="actions"><button class="primary" type="submit">Save</button><button type="button" data-cancel="employee">Cancel</button></div>
+            <p id="employeeMsg" role="status"></p>
+          </form>
+        </div>
       </div>
+    </section>
+
+    <section class="view" id="suppliers-view">
+      <div class="head"><h1>Suppliers</h1><p>Who supplies which medicines. New suppliers can be linked to a medicine from Add / Update.</p></div>
+      <div class="grid split">
+        <div class="card"><div class="scroll"><table>
+          <thead><tr><th>ID</th><th>Supplier</th><th>Phone</th><th class="num">Medicines</th><th>Supplies</th><th></th></tr></thead>
+          <tbody id="supplierRows"></tbody>
+        </table></div></div>
+        <div class="card">
+          <h2 id="supplierFormTitle">Add supplier</h2>
+          <form id="supplierForm" class="stack">
+            <label>Name<input name="name" maxlength="100" required></label>
+            <label>Phone<input name="phone" inputmode="numeric" pattern="\d{10}" maxlength="10" placeholder="10 digits" required></label>
+            <div class="actions"><button class="primary" type="submit">Save</button><button type="button" data-cancel="supplier">Cancel</button></div>
+            <p id="supplierMsg" role="status"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="rx">
+      <div class="head"><h1>Prescriptions</h1><p>Prescriptions on record for each customer.</p></div>
+      <div class="card"><div class="scroll"><table>
+        <thead><tr><th>ID</th><th>Customer</th><th>Doctor</th><th>Date</th></tr></thead>
+        <tbody id="prescriptions"></tbody>
+      </table></div></div>
     </section>
 
     <section class="view" id="analytics">
@@ -280,7 +325,7 @@ addEventListener('hashchange', show);
 /* ---------- Data ---------- */
 async function load() {
   const names = ['kpis','medicines','low_stock','expiring','top_medicines','sales','suppliers','prescriptions','history','graph',
-                 'supplier_list','customer_list','employee_list'];
+                 'supplier_list','customer_list','employee_list','employees'];
   (await Promise.all(names.map(get))).forEach((d, i) => D[names[i]] = d);
   const k = D.kpis;
 
@@ -302,13 +347,17 @@ async function load() {
     <td><span class="tag ${s.status === 'Paid' ? 'ok' : 'warn'}">${esc(s.status)}</span></td><td class="num">${inr(s.amount)}</td>
     <td class="num"><button class="small" data-edit-sale="${s.id}">Edit</button> <button class="small danger" data-del-sale="${s.id}">Delete</button></td></tr>`, 9);
   const opts = l => l.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
-  $('customerSelect').innerHTML = opts(D.customer_list);
+  $('customerSelect').innerHTML = opts(D.customer_list) + '<option value="new">+ New customer…</option>';
   $('employeeSelect').innerHTML = opts(D.employee_list);
+  toggleNewCustomer();
   if (editingSale === null && !$('items').children.length) openSale(null, false);
   rows('history', D.history, h => `<tr><td>${esc(h.customer)}</td><td>${h.sale}</td><td>${esc(h.medicine)}</td>
     <td class="num">${h.qty}</td><td>${esc(h.supplier)}</td></tr>`, 5);
-  rows('suppliers', D.suppliers, s => `<tr><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td class="num">${s.medicines}</td>
-    <td>${s.supplies.map(esc).join(', ')}</td></tr>`, 4);
+  rows('supplierRows', D.suppliers, s => `<tr><td>${s.id}</td><td><b>${esc(s.name)}</b></td><td>${esc(s.phone)}</td>
+    <td class="num">${s.medicines}</td><td>${s.supplies.map(esc).join(', ') || '<span class="empty">None yet</span>'}</td>
+    <td class="num"><button class="small" data-edit-person="${s.id}">Edit</button></td></tr>`, 6);
+  rows('employeeRows', D.employees, e => `<tr><td>${e.id}</td><td><b>${esc(e.name)}</b></td><td>${esc(e.phone)}</td>
+    <td class="num">${e.sales}</td><td class="num"><button class="small" data-edit-person="${e.id}">Edit</button></td></tr>`, 5);
   rows('prescriptions', D.prescriptions, p => `<tr><td>${p.id}</td><td>${esc(p.customer)}</td><td>${esc(p.doctor)}</td><td>${esc(p.date)}</td></tr>`, 4);
   $('supplierSelect').innerHTML = '<option value="">(none)</option>' +
     D.supplier_list.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
@@ -438,6 +487,15 @@ $('items').addEventListener('click', e => {
 });
 $('addItem').addEventListener('click', () => addItem());
 
+// "+ New customer…" reveals name/phone fields; the customer is created with the sale.
+function toggleNewCustomer() {
+  const isNew = $('customerSelect').value === 'new';
+  $('newCustomer').hidden = !isNew;
+  saleForm.elements.new_name.required = isNew;
+  if (isNew) saleForm.elements.new_name.focus();
+}
+$('customerSelect').addEventListener('change', toggleNewCustomer);
+
 // openSale() = blank new-sale form; openSale(sale) = update that sale's payment details.
 function openSale(s = null, go = true) {
   editingSale = s?.id ?? null;
@@ -460,6 +518,8 @@ function openSale(s = null, go = true) {
   saleForm.querySelectorAll('#customerSelect, #employeeSelect, [name=date], #items select, #items input, #items button, #addItem')
     .forEach(el => el.disabled = !!s);
   $('addItem').hidden = !!s;
+  $('newCustomer').hidden = true;
+  saleForm.elements.new_name.required = false;
   if (go) location.hash = 'new-sale';
 }
 
@@ -477,8 +537,48 @@ saleForm.addEventListener('submit', async e => {
   if (!r.ok) return say(res.error, false, saleMsg);
   await load();
   if (id) { openSale(D.sales.find(s => s.id === id), false); say(`Updated sale ${id}.`, true, saleMsg); }
-  else { openSale(null, false); say(`Recorded sale ${res.id}. Stock updated.`, true, saleMsg); }
+  else {
+    openSale(null, false);
+    const who = f.customer === 'new' ? ` New customer ${f.new_name} added (ID ${res.customer}).` : '';
+    say(`Recorded sale ${res.id}. Stock updated.${who}`, true, saleMsg);
+  }
 });
+
+/* ---------- Employees & suppliers: add / edit ---------- */
+const PEOPLE = { employee: () => D.employees, supplier: () => D.suppliers };
+
+function openPerson(kind, p = null) {
+  const f = $(kind + 'Form');
+  f.reset();
+  f.dataset.id = p?.id ?? '';
+  if (p) { f.elements.name.value = p.name; f.elements.phone.value = p.phone ?? ''; }
+  $(kind + 'FormTitle').textContent = p ? `Edit ${p.name}` : `Add ${kind}`;
+  say('', true, $(kind + 'Msg'));
+  if (p) f.elements.name.focus();
+}
+
+for (const kind of Object.keys(PEOPLE)) {
+  const f = $(kind + 'Form');
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = f.dataset.id;
+    const r = await fetch(`/api/${kind}` + (id ? '/' + id : ''), {
+      method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: f.elements.name.value, phone: f.elements.phone.value }),
+    });
+    const res = await r.json();
+    if (!r.ok) return say(res.error, false, $(kind + 'Msg'));
+    const name = f.elements.name.value.trim();
+    await load();
+    openPerson(kind);
+    say(id ? `Saved changes to ${name}.` : `Added ${name} (ID ${res.id}).`, true, $(kind + 'Msg'));
+  });
+  f.querySelector('[data-cancel]').addEventListener('click', () => openPerson(kind));
+  $(kind + 'Rows').addEventListener('click', e => {
+    const id = e.target.dataset.editPerson;
+    if (id) openPerson(kind, PEOPLE[kind]().find(p => String(p.id) === id));
+  });
+}
 
 $('salesRows').addEventListener('click', async e => {
   const { editSale, delSale } = e.target.dataset;

@@ -36,8 +36,11 @@ const QUERIES = {
     ORDER BY id`,
   suppliers: `
     MATCH (s:Supplier) OPTIONAL MATCH (s)-[:SUPPLIES]->(m:Medicine)
-    RETURN s.supplier_name AS name, s.phone AS phone, count(m) AS medicines,
-           collect(m.medicine_name) AS supplies ORDER BY name`,
+    RETURN s.supplier_id AS id, s.supplier_name AS name, s.phone AS phone, count(m) AS medicines,
+           collect(m.medicine_name) AS supplies ORDER BY id`,
+  employees: `
+    MATCH (e:Employee) OPTIONAL MATCH (e)-[:HANDLES]->(s:Sale)
+    RETURN e.employee_id AS id, e.employee_name AS name, e.phone AS phone, count(s) AS sales ORDER BY id`,
   history: `
     MATCH (c:Customer)-[:MAKES]->(s:Sale)-[r:CONTAINS]->(m:Medicine)<-[:SUPPLIES]-(sup:Supplier)
     RETURN c.customer_name AS customer, s.sale_id AS sale, m.medicine_name AS medicine,
@@ -50,15 +53,49 @@ const QUERIES = {
   customer_list: `MATCH (c:Customer) RETURN c.customer_id AS id, c.customer_name AS name ORDER BY id`,
   employee_list: `MATCH (e:Employee) RETURN e.employee_id AS id, e.employee_name AS name ORDER BY id`,
   graph: `
-    MATCH (a)-[r]->(b)
-    WITH collect(DISTINCT a) + collect(DISTINCT b) AS ns, collect(r) AS rs
-    UNWIND ns AS n WITH DISTINCT n, rs
-    WITH collect({id: elementId(n), group: labels(n)[0],
-                  label: coalesce(n.medicine_name, n.supplier_name, n.customer_name, n.employee_name,
-                                  n.doctor_name, 'Sale ' + n.sale_id)}) AS nodes, rs
-    RETURN nodes, [r IN rs | {from: elementId(startNode(r)), to: elementId(endNode(r)),
-                              label: type(r) + coalesce(' x' + r.quantity, '')}] AS edges`,
+    CALL () {
+      MATCH (n)
+      RETURN collect({id: elementId(n), group: labels(n)[0],
+                      label: coalesce(n.medicine_name, n.supplier_name, n.customer_name, n.employee_name,
+                                      n.doctor_name, 'Sale ' + n.sale_id)}) AS nodes
+    }
+    CALL () {
+      MATCH (a)-[r]->(b)
+      RETURN collect({from: elementId(a), to: elementId(b), label: type(r) + coalesce(' x' + r.quantity, '')}) AS edges
+    }
+    RETURN nodes, edges`,
 };
+
+// Employees and suppliers share the same shape: auto ID, name, phone. Labels and property
+// names come from this fixed table (never from user input), since Cypher can't parameterise them.
+const PEOPLE = {
+  employee: { label: 'Employee', key: 'employee_id', name: 'employee_name', base: 300 },
+  supplier: { label: 'Supplier', key: 'supplier_id', name: 'supplier_name', base: 100 },
+};
+const PHONE = /^\d{10}$/;
+
+function parsePerson(f) {
+  const p = { name: String(f.name ?? '').trim(), phone: String(f.phone ?? '').trim() };
+  if (!p.name) return 'Name is required';
+  if (p.name.length > 100) return 'Name is too long';
+  if (!PHONE.test(p.phone)) return 'Phone must be exactly 10 digits';
+  return p;
+}
+
+async function savePerson(env, kind, id, p) {
+  const { label, key, name, base } = PEOPLE[kind];
+  if (id === null) {
+    const rows = await run(env, `
+      CALL () { MATCH (x:${label}) RETURN coalesce(max(x.${key}), ${base}) + 1 AS nid }
+      CREATE (n:${label} {${key}: nid, ${name}: $name, phone: $phone})
+      RETURN n.${key} AS id`, p);
+    return json({ ok: true, id: rows[0].id });
+  }
+  const rows = await run(env, `
+    MATCH (n:${label} {${key}: $id}) SET n.${name} = $name, n.phone = $phone
+    RETURN n.${key} AS id`, { ...p, id });
+  return rows.length ? json({ ok: true, id }) : json({ error: `${label} ${id} not found` }, 404);
+}
 const SINGLE_ROW = new Set(['kpis', 'graph']);
 
 async function run(env, statement, parameters = {}) {
@@ -105,11 +142,18 @@ function parsePayment(f) {
 function parseSale(f) {
   const pay = parsePayment(f);
   if (typeof pay === 'string') return pay;
+  // customer is an existing ID, or 'new' with new_name (+ optional new_phone) to create one.
+  const isNew = f.customer === 'new';
   const p = {
-    ...pay, customer: Number(f.customer), employee: Number(f.employee), date: String(f.date ?? ''),
+    ...pay, customer: isNew ? null : Number(f.customer), employee: Number(f.employee), date: String(f.date ?? ''),
+    newName: isNew ? String(f.new_name ?? '').trim() : null,
+    newPhone: isNew && String(f.new_phone ?? '').trim() ? String(f.new_phone).trim() : null,
     items: (Array.isArray(f.items) ? f.items : []).map(i => ({ medicine: Number(i.medicine), qty: Number(i.qty) })),
   };
-  if (!Number.isInteger(p.customer) || !Number.isInteger(p.employee)) return 'Choose a customer and an employee';
+  if (isNew && !p.newName) return 'Enter the new customer\'s name';
+  if (isNew && p.newName.length > 100) return 'Customer name is too long';
+  if (p.newPhone !== null && !PHONE.test(p.newPhone)) return 'Customer phone must be exactly 10 digits';
+  if ((!isNew && !Number.isInteger(p.customer)) || !Number.isInteger(p.employee)) return 'Choose a customer and an employee';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date) || isNaN(Date.parse(p.date))) return 'Sale date must be a valid date';
   if (!p.items.length) return 'Add at least one medicine';
   if (p.items.some(i => !Number.isInteger(i.medicine) || !Number.isInteger(i.qty) || i.qty < 1))
@@ -118,15 +162,20 @@ function parseSale(f) {
   return p;
 }
 
-// Creates the Sale, its MAKES / HANDLES / CONTAINS relationships and reduces stock in ONE
-// transaction. The WHERE re-checks stock inside the transaction, so nothing is written if any
-// item is short (returns no rows).
+// Creates the Sale (and a new Customer if needed), its MAKES / HANDLES / CONTAINS relationships
+// and reduces stock in ONE transaction. The WHERE re-checks stock and the existing customer
+// inside the transaction, so nothing is written if any check fails (returns no rows).
+// $customer = null means "create a new customer" with the next free ID.
 const CREATE_SALE = `
   UNWIND $items AS it
   MATCH (m:Medicine {medicine_id: it.medicine})
   WITH collect({m: m, qty: it.qty}) AS lines
   WHERE size(lines) = size($items) AND all(l IN lines WHERE l.m.stock >= l.qty)
-  MATCH (c:Customer {customer_id: $customer}), (e:Employee {employee_id: $employee})
+    AND ($customer IS NULL OR EXISTS { MATCH (:Customer {customer_id: $customer}) })
+  MATCH (e:Employee {employee_id: $employee})
+  CALL () { MATCH (x:Customer) RETURN coalesce(max(x.customer_id), 200) + 1 AS nextCid }
+  MERGE (c:Customer {customer_id: coalesce($customer, nextCid)})
+    ON CREATE SET c.customer_name = $newName, c.phone = $newPhone
   CALL () { MATCH (x:Sale) RETURN coalesce(max(x.sale_id), 600) + 1 AS sid }
   CREATE (s:Sale {sale_id: sid, sale_date: date($date), payment_mode: $mode, payment_status: $status})
   CREATE (c)-[:MAKES]->(s), (e)-[:HANDLES]->(s)
@@ -135,7 +184,9 @@ const CREATE_SALE = `
   WITH s, l.m AS m, l.qty AS qty
   CREATE (s)-[:CONTAINS {quantity: qty}]->(m)
   SET m.stock = m.stock - qty
-  RETURN DISTINCT s.sale_id AS id`;
+  WITH DISTINCT s
+  MATCH (c:Customer)-[:MAKES]->(s)
+  RETURN s.sale_id AS id, c.customer_id AS customer`;
 
 // Puts each item's quantity back into stock, then removes the sale and its relationships.
 const DELETE_SALE = `
@@ -157,14 +208,14 @@ async function createSale(env, p) {
   }
   const rows = await run(env, CREATE_SALE, p);
   if (!rows.length) return json({ error: 'Sale not recorded: stock changed or customer/employee not found' }, 409);
-  return json({ ok: true, id: rows[0].id });
+  return json({ ok: true, id: rows[0].id, customer: rows[0].customer });
 }
 
 export async function onRequest({ request, env, params }) {
   const path = params.path ?? [];
   const [name, id] = path;
   try {
-    if (request.method === 'GET' && path.length === 1 && QUERIES[name]) {
+    if (request.method === 'GET' && path.length === 1 && Object.hasOwn(QUERIES, name)) {
       const rows = await run(env, QUERIES[name]);
       return json(SINGLE_ROW.has(name) ? rows[0] : rows);
     }
@@ -189,7 +240,15 @@ export async function onRequest({ request, env, params }) {
       return json({ ok: true });
     }
 
-    const saleId = /^\d+$/.test(id ?? '') ? Number(id) : null;
+    const numId = /^\d+$/.test(id ?? '') ? Number(id) : null;
+
+    // Employees / suppliers: POST creates (auto ID), PUT /<id> updates name and phone.
+    if (Object.hasOwn(PEOPLE, name) && ((request.method === 'POST' && path.length === 1) ||
+                         (request.method === 'PUT' && numId !== null && path.length === 2))) {
+      const p = parsePerson(await request.json().catch(() => ({})));
+      if (typeof p === 'string') return json({ error: p }, 400);
+      return await savePerson(env, name, request.method === 'PUT' ? numId : null, p);
+    }
 
     if (request.method === 'POST' && name === 'sale' && path.length === 1) {
       const p = parseSale(await request.json().catch(() => ({})));
@@ -197,18 +256,18 @@ export async function onRequest({ request, env, params }) {
       return await createSale(env, p);
     }
 
-    if (request.method === 'PUT' && name === 'sale' && saleId !== null && path.length === 2) {
+    if (request.method === 'PUT' && name === 'sale' && numId !== null && path.length === 2) {
       // Only payment details are editable; items are fixed once stock has been deducted.
       const p = parsePayment(await request.json().catch(() => ({})));
       if (typeof p === 'string') return json({ error: p }, 400);
       const rows = await run(env, `
         MATCH (s:Sale {sale_id: $id}) SET s.payment_mode = $mode, s.payment_status = $status
-        RETURN s.sale_id AS id`, { ...p, id: saleId });
-      return rows.length ? json({ ok: true }) : json({ error: `Sale ${saleId} not found` }, 404);
+        RETURN s.sale_id AS id`, { ...p, id: numId });
+      return rows.length ? json({ ok: true }) : json({ error: `Sale ${numId} not found` }, 404);
     }
 
-    if (request.method === 'DELETE' && name === 'sale' && saleId !== null && path.length === 2) {
-      await run(env, DELETE_SALE, { id: saleId });
+    if (request.method === 'DELETE' && name === 'sale' && numId !== null && path.length === 2) {
+      await run(env, DELETE_SALE, { id: numId });
       return json({ ok: true });
     }
 
