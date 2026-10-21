@@ -1,0 +1,11 @@
+# Secrets - Aura credentials
+.env
+Neo4j-*.txt
+
+# Local
+__pycache__/
+*.pyc
+.venv/
+.claude/
+*.docx
+~$*
