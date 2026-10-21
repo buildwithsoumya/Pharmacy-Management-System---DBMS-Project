@@ -11,38 +11,44 @@
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
   :root {
-    color-scheme: light;
-    /* Slate & indigo theme. Every colour on the page derives from these tokens. */
-    --bg: #f4f5f8; --surface: #ffffff; --subtle: #f8f9fb; --border: #e3e6ee; --line: #eef0f4;
-    --text: #1e2230; --text-2: #565d70; --muted: #8a90a2;
-    --accent: #4f5bd5; --accent-dark: #3d47b3; --accent-2: #8a6cf0; --accent-tint: #eceefc; --accent-soft: #d5d9f7;
-    --accent-rgb: 79, 91, 213; --ink-rgb: 30, 34, 48;
-    --good: #1f8a52; --good-bg: #e6f5ec;
-    --warn-bg: #fdf3dc; --warn: #8a5a00; --bad-bg: #fbe7e6; --bad: #a83232;
-    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#6250d6;
+    color-scheme: dark; /* dark native controls: date pickers, dropdowns, scrollbars */
+    /* Midnight theme: near-black with a lilac-indigo accent. Every colour on the page derives from these tokens. */
+    --bg: #0a0b0f; --surface: #13151b; --subtle: #181b22; --border: #252833; --line: #1d2028;
+    --text: #eceef3; --text-2: #a4aaba; --muted: #8a91a3;
+    --accent: #8b93ff;        /* charts, indicators, focus */
+    --accent-dark: #b4b9ff;   /* accent used as text on dark surfaces */
+    --accent-deep: #4c54d8;   /* filled buttons and gradient ends (white text stays readable) */
+    --accent-2: #a77bff; --accent-tint: #1b1e3a; --accent-soft: #2c3063;
+    --accent-rgb: 139, 147, 255; --ink-rgb: 0, 0, 0; --dot-rgb: 255, 255, 255;
+    --sidebar: rgba(15, 17, 22, .85); --on-accent: #ffffff;
+    --good: #45d18f; --good-bg: #10301f;
+    --warn-bg: #352a0c; --warn: #f3c45f; --bad-bg: #3b1719; --bad: #ff8d8d;
+    /* Categorical node colours, stepped for a dark surface. */
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#9085e9;
+    --json-key: #b4b9ff; --json-str: #f0a874; --json-num: #63d5c5; --json-bool: #d1a6ff;
     --display: "Bricolage Grotesque", Inter, system-ui, sans-serif;
     --ease: cubic-bezier(.2, .7, .2, 1);
-    --shadow: 0 1px 2px rgba(var(--ink-rgb), .04), 0 4px 14px rgba(var(--ink-rgb), .05);
-    --shadow-lift: 0 2px 4px rgba(var(--ink-rgb), .05), 0 12px 28px rgba(var(--accent-rgb), .14);
+    --shadow: 0 1px 2px rgba(var(--ink-rgb), .5), 0 8px 24px rgba(var(--ink-rgb), .35);
+    --shadow-lift: 0 2px 4px rgba(var(--ink-rgb), .5), 0 14px 32px rgba(var(--accent-rgb), .18);
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; font: 14px/1.5 Inter, system-ui, "Segoe UI", sans-serif; color: var(--text);
     /* Faint dot grid (a nod to graph nodes) with a soft accent glow in the corner. */
     background:
-      radial-gradient(900px 500px at 100% -10%, rgba(var(--accent-rgb), .08), transparent 60%),
-      radial-gradient(circle, rgba(var(--ink-rgb), .07) 1px, transparent 1.2px) 0 0 / 22px 22px,
+      radial-gradient(900px 500px at 100% -10%, rgba(var(--accent-rgb), .12), transparent 60%),
+      radial-gradient(circle, rgba(var(--dot-rgb), .06) 1px, transparent 1.2px) 0 0 / 22px 22px,
       var(--bg);
     background-attachment: fixed;
   }
   .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
 
   /* Sidebar */
-  aside { background: rgba(255, 255, 255, .86); backdrop-filter: blur(8px); border-right: 1px solid var(--border);
+  aside { background: var(--sidebar); backdrop-filter: blur(8px); border-right: 1px solid var(--border);
           padding: 22px 14px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
   .brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 22px; }
   .brand .logo { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
-                 background: linear-gradient(140deg, var(--accent-2), var(--accent-dark)); box-shadow: 0 4px 12px rgba(var(--accent-rgb), .32); }
+                 background: linear-gradient(140deg, var(--accent-2), var(--accent-deep)); box-shadow: 0 4px 14px rgba(var(--accent-rgb), .35); }
   .brand b { display: block; font: 700 17px/1.15 var(--display); letter-spacing: -.01em; }
   .brand b em { font-style: normal; color: var(--accent); }
   .brand small { color: var(--muted); font-size: 12px; }
@@ -90,8 +96,8 @@
   .kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
   .kpi span { color: var(--text-2); font-size: 13px; }
   .kpi b { display: block; margin-top: 4px; font: 700 30px/1.1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .kpi.hero { grid-column: span 2; border: 0; color: #fff;
-              background: linear-gradient(135deg, var(--accent-2) 0%, var(--accent) 50%, var(--accent-dark) 100%); }
+  .kpi.hero { grid-column: span 2; border: 0; color: var(--on-accent);
+              background: linear-gradient(135deg, var(--accent-2) 0%, var(--accent-deep) 55%, #262a7a 100%); }
   /* Decorative "graph" of rings and dots in the hero tile. */
   .kpi.hero::after { content: ""; position: absolute; right: -40px; top: -50px; width: 220px; height: 220px; border-radius: 50%;
                      background: radial-gradient(circle at 30% 70%, rgba(255,255,255,.35) 0 4px, transparent 5px),
@@ -99,8 +105,8 @@
                                  radial-gradient(circle, transparent 54%, rgba(255,255,255,.12) 55% 56%, transparent 57%),
                                  radial-gradient(circle, transparent 74%, rgba(255,255,255,.1) 75% 76%, transparent 77%);
                      animation: drift 14s ease-in-out infinite alternate; }
-  .kpi.hero span { color: var(--accent-soft); }
-  .kpi.hero b { color: #fff; font-size: 36px; }
+  .kpi.hero span { color: rgba(255, 255, 255, .75); }
+  .kpi.hero b { color: var(--on-accent); font-size: 36px; }
 
   .chart { position: relative; height: 280px; }
   .scroll { overflow-x: auto; }
@@ -135,8 +141,8 @@
   button { cursor: pointer; font-weight: 500; }
   button:hover { background: var(--bg); }
   button:active { transform: scale(.97); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(var(--accent-rgb), .28); }
-  button.primary:hover { background: var(--accent-dark); box-shadow: 0 4px 14px rgba(var(--accent-rgb), .36); }
+  button.primary { background: var(--accent-deep); border-color: var(--accent-deep); color: var(--on-accent); box-shadow: 0 2px 10px rgba(var(--accent-rgb), .25); }
+  button.primary:hover { background: var(--accent-deep); filter: brightness(1.15); box-shadow: 0 4px 16px rgba(var(--accent-rgb), .35); }
   .actions { grid-column: span 2; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   button.small { padding: 4px 10px; font-size: 12.5px; }
   button.danger { color: var(--bad); }
@@ -156,8 +162,8 @@
   .hops button small { color: var(--muted); }
   #inspectJson { margin: 14px 0 0; padding: 14px 16px; background: var(--subtle); border: 1px solid var(--border); border-radius: 8px;
                  font: 12.5px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; max-height: 420px; overflow: auto; white-space: pre; }
-  #inspectJson .k { color: var(--accent-dark); } #inspectJson .s { color: #a3521f; } #inspectJson .n { color: #0f7f74; }
-  #inspectJson .b { color: #7a3fb0; }
+  #inspectJson .k { color: var(--json-key); } #inspectJson .s { color: var(--json-str); } #inspectJson .n { color: var(--json-num); }
+  #inspectJson .b { color: var(--json-bool); }
 
   /* ---------- Motion (kept short and subtle; all disabled for reduced-motion users) ---------- */
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -535,12 +541,12 @@ function drawGraph() {
   const color = Object.fromEntries(GROUPS.map((l, i) => [l, css('--s' + (i + 1))]));
   const ring = css('--accent-dark');
   const nodes = D.graph.nodes.map(n => ({ ...n, shape: 'dot', size: 16, borderWidth: 2, borderWidthSelected: 4,
-    color: { background: color[n.group], border: '#fff', highlight: { background: color[n.group], border: ring },
+    color: { background: color[n.group], border: css('--surface'), highlight: { background: color[n.group], border: ring },
              hover: { background: color[n.group], border: ring } },
     font: { color: css('--text'), face: 'Inter', size: 13 } }));
   const edges = D.graph.edges.map(e => ({ ...e, arrows: { to: { scaleFactor: .6 } }, width: 1, selectionWidth: 2,
     color: { color: css('--muted'), highlight: ring, hover: ring },
-    font: { color: css('--muted'), size: 10, strokeWidth: 3, strokeColor: '#fff' } }));
+    font: { color: css('--muted'), size: 10, strokeWidth: 3, strokeColor: css('--surface') } }));
   network?.destroy();
   network = new vis.Network($('graph'), { nodes, edges },
     { physics: { stabilization: true, barnesHut: { springLength: 150 } }, interaction: { hover: true } });
