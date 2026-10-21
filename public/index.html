@@ -101,6 +101,19 @@
   #graph { height: 560px; }
   .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; color: var(--text-2); font-size: 13px; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .inspector { margin-top: 18px; }
+  .inspector-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .inspector-head h2 { margin: 0; }
+  .inspector-head h2 i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+  .hops { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+  .hops:empty { display: none; }
+  .hops button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12.5px; border-radius: 99px; }
+  .hops button i { width: 8px; height: 8px; border-radius: 50%; }
+  .hops button small { color: var(--muted); }
+  #inspectJson { margin: 14px 0 0; padding: 14px 16px; background: #fbfbf8; border: 1px solid var(--border); border-radius: 8px;
+                 font: 12.5px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; max-height: 420px; overflow: auto; white-space: pre; }
+  #inspectJson .k { color: var(--green-dark); } #inspectJson .s { color: #a3521f; } #inspectJson .n { color: #2a5fb0; }
+  #inspectJson .b { color: #7a3fb0; }
 
   @media (max-width: 860px) {
     .app { grid-template-columns: 1fr; }
@@ -305,8 +318,17 @@
     </section>
 
     <section class="view" id="graph-view">
-      <div class="head"><h1>Graph</h1><p>The whole pharmacy database as nodes and relationships. Drag nodes to explore.</p></div>
+      <div class="head"><h1>Graph</h1><p>The whole pharmacy database as nodes and relationships. Click a node or arrow to inspect it; drag to rearrange.</p></div>
       <div class="card"><div id="graph"></div><div class="legend" id="legend"></div></div>
+      <div class="card inspector">
+        <div class="inspector-head">
+          <h2 id="inspectTitle">Inspector</h2>
+          <button type="button" class="small" id="copyJson" hidden>Copy JSON</button>
+        </div>
+        <p class="empty" id="inspectHint">Click any node or relationship in the graph above to see all of its data here.</p>
+        <div id="hops" class="hops"></div>
+        <pre id="inspectJson" hidden></pre>
+      </div>
     </section>
   </main>
 </div>
@@ -426,15 +448,93 @@ let graphDrawn = false, network;
 function drawGraph() {
   if (graphDrawn) return; graphDrawn = true;
   const color = Object.fromEntries(GROUPS.map((l, i) => [l, css('--s' + (i + 1))]));
-  const nodes = D.graph.nodes.map(n => ({ ...n, shape: 'dot', size: 16, color: { background: color[n.group], border: '#fff' },
-                                          borderWidth: 2, font: { color: css('--text'), face: 'Inter', size: 13 } }));
-  const edges = D.graph.edges.map(e => ({ ...e, arrows: { to: { scaleFactor: .6 } }, color: css('--muted'),
-                                          font: { color: css('--muted'), size: 10, strokeWidth: 3, strokeColor: '#fff' } }));
+  const ring = css('--green-dark');
+  const nodes = D.graph.nodes.map(n => ({ ...n, shape: 'dot', size: 16, borderWidth: 2, borderWidthSelected: 4,
+    color: { background: color[n.group], border: '#fff', highlight: { background: color[n.group], border: ring },
+             hover: { background: color[n.group], border: ring } },
+    font: { color: css('--text'), face: 'Inter', size: 13 } }));
+  const edges = D.graph.edges.map(e => ({ ...e, arrows: { to: { scaleFactor: .6 } }, width: 1, selectionWidth: 2,
+    color: { color: css('--muted'), highlight: ring, hover: ring },
+    font: { color: css('--muted'), size: 10, strokeWidth: 3, strokeColor: '#fff' } }));
   network?.destroy();
   network = new vis.Network($('graph'), { nodes, edges },
     { physics: { stabilization: true, barnesHut: { springLength: 150 } }, interaction: { hover: true } });
+  network.on('click', p => p.nodes.length ? inspectNode(p.nodes[0]) : p.edges.length ? inspectEdge(p.edges[0]) : clearInspector());
   $('legend').innerHTML = GROUPS.map(l => `<span><i style="background:${color[l]}"></i>${l}</span>`).join('');
+  graphColor = color;
+  clearInspector();
 }
+
+/* ---------- Graph inspector: click a node/edge to see its JSON ---------- */
+let graphColor = {};
+const nodeById = id => D.graph.nodes.find(n => n.id === id);
+// A short reference to another node: its label, its *_id key and its display name.
+function ref(n) {
+  const key = Object.keys(n.props).find(k => k.endsWith('_id'));
+  return { label: n.group, [key]: n.props[key], name: n.label };
+}
+// Pretty JSON with light syntax colouring (values are HTML-escaped first).
+function highlight(obj) {
+  return esc(JSON.stringify(obj, null, 2)).replace(
+    /(&quot;(?:[^&]|&(?!quot;))*?&quot;)(\s*:)?|\b(true|false|null)\b|-?\b\d+(?:\.\d+)?\b/g,
+    (m, str, colon, bool) => str ? `<span class="${colon ? 'k' : 's'}">${str}</span>${colon ?? ''}`
+                           : bool ? `<span class="b">${m}</span>` : `<span class="n">${m}</span>`);
+}
+function showInspector(title, dotColor, data, hops = []) {
+  $('inspectTitle').innerHTML = `<i style="background:${dotColor}"></i>${esc(title)}`;
+  $('inspectHint').hidden = true;
+  $('inspectJson').hidden = $('copyJson').hidden = false;
+  $('inspectJson').innerHTML = highlight(data);
+  $('inspectJson').dataset.raw = JSON.stringify(data, null, 2);
+  $('hops').innerHTML = hops.map(h => `<button type="button" data-hop="${esc(h.node.id)}" title="Go to ${esc(h.node.label)}">
+    <i style="background:${graphColor[h.node.group]}"></i>${esc(h.node.label)} <small>${h.arrow}</small></button>`).join('');
+}
+function clearInspector() {
+  $('inspectTitle').textContent = 'Inspector';
+  $('inspectHint').hidden = false;
+  $('inspectJson').hidden = $('copyJson').hidden = true;
+  $('hops').innerHTML = '';
+}
+function inspectNode(id) {
+  const n = nodeById(id);
+  const rels = D.graph.edges.filter(e => e.from === id || e.to === id).map(e => {
+    const out = e.from === id, other = nodeById(out ? e.to : e.from);
+    return { e, other, out };
+  });
+  showInspector(`${n.group}: ${n.label}`, graphColor[n.group], {
+    labels: n.labels,
+    properties: n.props,
+    relationships: rels.map(({ e, other, out }) => ({
+      direction: out ? 'outgoing' : 'incoming',
+      pattern: out ? `(${n.group})-[:${e.type}]->(${other.group})` : `(${other.group})-[:${e.type}]->(${n.group})`,
+      ...(Object.keys(e.props).length ? { properties: e.props } : {}),
+      [out ? 'to' : 'from']: ref(other),
+    })),
+  }, rels.map(({ e, other, out }) => ({ node: other, arrow: out ? `${e.type} →` : `← ${e.type}` })));
+}
+function inspectEdge(id) {
+  const e = D.graph.edges.find(x => x.id === id), a = nodeById(e.from), b = nodeById(e.to);
+  showInspector(`Relationship: ${e.type}`, css('--muted'), {
+    type: e.type,
+    pattern: `(${a.group})-[:${e.type}]->(${b.group})`,
+    properties: e.props,
+    from: ref(a),
+    to: ref(b),
+  }, [{ node: a, arrow: 'start' }, { node: b, arrow: 'end' }]);
+}
+// Hop buttons jump to the connected node: select it, centre the view, and inspect it.
+$('hops').addEventListener('click', e => {
+  const id = e.target.closest('[data-hop]')?.dataset.hop;
+  if (!id) return;
+  network.selectNodes([id]);
+  network.focus(id, { scale: 1.2, animation: { duration: 400 } });
+  inspectNode(id);
+});
+$('copyJson').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('inspectJson').dataset.raw); $('copyJson').textContent = 'Copied'; }
+  catch { $('copyJson').textContent = 'Copy failed'; }
+  setTimeout(() => $('copyJson').textContent = 'Copy JSON', 1500);
+});
 
 /* ---------- Add / update / delete ---------- */
 const form = $('medForm'), msg = $('msg');

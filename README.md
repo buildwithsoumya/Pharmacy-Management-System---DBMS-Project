@@ -56,7 +56,7 @@ A clean light UI with a sidebar. Each section is its own page: **Overview, Inven
 - **Prescriptions:** add and edit (customer, doctor, date). Changing the customer re-links the `HAS_PRESCRIPTION` relationship.
 - **Suppliers** and the medicines they supply, plus **prescriptions** per customer
 - **Purchase trace:** a multi-hop traversal `Customer → Sale → Medicine ← Supplier`
-- **Interactive graph view** of the whole database
+- **Interactive graph view** of the whole database. Click any node or relationship to see its labels, properties and every connection as JSON, then use the buttons to hop from node to node.
 
 Every panel reads live from Neo4j. Nothing is hard-coded.
 

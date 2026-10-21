@@ -55,13 +55,14 @@ const QUERIES = {
   graph: `
     CALL () {
       MATCH (n)
-      RETURN collect({id: elementId(n), group: labels(n)[0],
+      RETURN collect({id: elementId(n), group: labels(n)[0], labels: labels(n), props: properties(n),
                       label: coalesce(n.medicine_name, n.supplier_name, n.customer_name, n.employee_name,
                                       n.doctor_name, 'Sale ' + n.sale_id)}) AS nodes
     }
     CALL () {
       MATCH (a)-[r]->(b)
-      RETURN collect({from: elementId(a), to: elementId(b), label: type(r) + coalesce(' x' + r.quantity, '')}) AS edges
+      RETURN collect({id: elementId(r), from: elementId(a), to: elementId(b), type: type(r), props: properties(r),
+                      label: type(r) + coalesce(' x' + r.quantity, '')}) AS edges
     }
     RETURN nodes, edges`,
 };
