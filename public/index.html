@@ -276,11 +276,23 @@
     </section>
 
     <section class="view" id="rx">
-      <div class="head"><h1>Prescriptions</h1><p>Prescriptions on record for each customer.</p></div>
-      <div class="card"><div class="scroll"><table>
-        <thead><tr><th>ID</th><th>Customer</th><th>Doctor</th><th>Date</th></tr></thead>
-        <tbody id="prescriptions"></tbody>
-      </table></div></div>
+      <div class="head"><h1>Prescriptions</h1><p>Prescriptions on record, each linked to a customer by HAS_PRESCRIPTION.</p></div>
+      <div class="grid split">
+        <div class="card"><div class="scroll"><table>
+          <thead><tr><th>ID</th><th>Customer</th><th>Doctor</th><th>Date</th><th></th></tr></thead>
+          <tbody id="prescriptionRows"></tbody>
+        </table></div></div>
+        <div class="card">
+          <h2 id="prescriptionFormTitle">Add prescription</h2>
+          <form id="prescriptionForm" class="stack">
+            <label>Customer<select name="customer" id="rxCustomerSelect" required></select></label>
+            <label>Doctor name<input name="doctor" maxlength="100" placeholder="e.g. Dr. Mehta" required></label>
+            <label>Prescription date<input name="date" type="date" required></label>
+            <div class="actions"><button class="primary" type="submit">Save</button><button type="button" data-cancel="prescription">Cancel</button></div>
+            <p id="prescriptionMsg" role="status"></p>
+          </form>
+        </div>
+      </div>
     </section>
 
     <section class="view" id="analytics">
@@ -355,10 +367,12 @@ async function load() {
     <td class="num">${h.qty}</td><td>${esc(h.supplier)}</td></tr>`, 5);
   rows('supplierRows', D.suppliers, s => `<tr><td>${s.id}</td><td><b>${esc(s.name)}</b></td><td>${esc(s.phone)}</td>
     <td class="num">${s.medicines}</td><td>${s.supplies.map(esc).join(', ') || '<span class="empty">None yet</span>'}</td>
-    <td class="num"><button class="small" data-edit-person="${s.id}">Edit</button></td></tr>`, 6);
+    <td class="num"><button class="small" data-edit-record="${s.id}">Edit</button></td></tr>`, 6);
   rows('employeeRows', D.employees, e => `<tr><td>${e.id}</td><td><b>${esc(e.name)}</b></td><td>${esc(e.phone)}</td>
-    <td class="num">${e.sales}</td><td class="num"><button class="small" data-edit-person="${e.id}">Edit</button></td></tr>`, 5);
-  rows('prescriptions', D.prescriptions, p => `<tr><td>${p.id}</td><td>${esc(p.customer)}</td><td>${esc(p.doctor)}</td><td>${esc(p.date)}</td></tr>`, 4);
+    <td class="num">${e.sales}</td><td class="num"><button class="small" data-edit-record="${e.id}">Edit</button></td></tr>`, 5);
+  rows('prescriptionRows', D.prescriptions, p => `<tr><td>${p.id}</td><td><b>${esc(p.customer)}</b></td><td>${esc(p.doctor)}</td>
+    <td>${esc(p.date)}</td><td class="num"><button class="small" data-edit-record="${p.id}">Edit</button></td></tr>`, 5);
+  $('rxCustomerSelect').innerHTML = opts(D.customer_list);
   $('supplierSelect').innerHTML = '<option value="">(none)</option>' +
     D.supplier_list.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
 
@@ -544,39 +558,49 @@ saleForm.addEventListener('submit', async e => {
   }
 });
 
-/* ---------- Employees & suppliers: add / edit ---------- */
-const PEOPLE = { employee: () => D.employees, supplier: () => D.suppliers };
+/* ---------- Employees, suppliers & prescriptions: add / edit ---------- */
+// Each entry: where its rows live, how a row fills the form, and how to name it in messages.
+// The form's own input names are sent as the JSON body (POST /api/<kind>, PUT /api/<kind>/<id>).
+const today = () => new Date().toLocaleDateString('en-CA');
+const RECORDS = {
+  employee: { rows: () => D.employees, fill: p => ({ name: p.name, phone: p.phone }), label: p => p.name },
+  supplier: { rows: () => D.suppliers, fill: p => ({ name: p.name, phone: p.phone }), label: p => p.name },
+  prescription: {
+    rows: () => D.prescriptions, defaults: () => ({ date: today() }),
+    fill: p => ({ customer: p.customer_id, doctor: p.doctor, date: p.date }), label: p => `prescription ${p.id}`,
+  },
+};
 
-function openPerson(kind, p = null) {
-  const f = $(kind + 'Form');
+function openRecord(kind, p = null) {
+  const cfg = RECORDS[kind], f = $(kind + 'Form');
   f.reset();
   f.dataset.id = p?.id ?? '';
-  if (p) { f.elements.name.value = p.name; f.elements.phone.value = p.phone ?? ''; }
-  $(kind + 'FormTitle').textContent = p ? `Edit ${p.name}` : `Add ${kind}`;
+  Object.entries(p ? cfg.fill(p) : cfg.defaults?.() ?? {}).forEach(([k, v]) => f.elements[k].value = v ?? '');
+  $(kind + 'FormTitle').textContent = p ? `Edit ${cfg.label(p)}` : `Add ${kind}`;
   say('', true, $(kind + 'Msg'));
-  if (p) f.elements.name.focus();
+  if (p) f.querySelector('input').focus();
 }
 
-for (const kind of Object.keys(PEOPLE)) {
+for (const kind of Object.keys(RECORDS)) {
   const f = $(kind + 'Form');
+  openRecord(kind);
   f.addEventListener('submit', async e => {
     e.preventDefault();
     const id = f.dataset.id;
     const r = await fetch(`/api/${kind}` + (id ? '/' + id : ''), {
       method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: f.elements.name.value, phone: f.elements.phone.value }),
+      body: JSON.stringify(Object.fromEntries(new FormData(f))),
     });
     const res = await r.json();
     if (!r.ok) return say(res.error, false, $(kind + 'Msg'));
-    const name = f.elements.name.value.trim();
     await load();
-    openPerson(kind);
-    say(id ? `Saved changes to ${name}.` : `Added ${name} (ID ${res.id}).`, true, $(kind + 'Msg'));
+    openRecord(kind);
+    say(id ? `Saved changes to ${kind} ${id}.` : `Added ${kind} ${res.id}.`, true, $(kind + 'Msg'));
   });
-  f.querySelector('[data-cancel]').addEventListener('click', () => openPerson(kind));
+  f.querySelector('[data-cancel]').addEventListener('click', () => openRecord(kind));
   $(kind + 'Rows').addEventListener('click', e => {
-    const id = e.target.dataset.editPerson;
-    if (id) openPerson(kind, PEOPLE[kind]().find(p => String(p.id) === id));
+    const id = e.target.dataset.editRecord;
+    if (id) openRecord(kind, RECORDS[kind].rows().find(p => String(p.id) === id));
   });
 }
 

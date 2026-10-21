@@ -47,8 +47,8 @@ const QUERIES = {
            r.quantity AS qty, sup.supplier_name AS supplier ORDER BY customer, sale`,
   prescriptions: `
     MATCH (c:Customer)-[:HAS_PRESCRIPTION]->(p:Prescription)
-    RETURN c.customer_name AS customer, p.prescription_id AS id, p.doctor_name AS doctor,
-           toString(p.prescription_date) AS date ORDER BY id`,
+    RETURN c.customer_id AS customer_id, c.customer_name AS customer, p.prescription_id AS id,
+           p.doctor_name AS doctor, toString(p.prescription_date) AS date ORDER BY id`,
   supplier_list: `MATCH (s:Supplier) RETURN s.supplier_id AS id, s.supplier_name AS name ORDER BY id`,
   customer_list: `MATCH (c:Customer) RETURN c.customer_id AS id, c.customer_name AS name ORDER BY id`,
   employee_list: `MATCH (e:Employee) RETURN e.employee_id AS id, e.employee_name AS name ORDER BY id`,
@@ -130,6 +130,33 @@ function parseMedicine(f) {
   if (p.supplier !== null && !Number.isInteger(p.supplier)) return 'Invalid supplier';
   return p;
 }
+
+function parsePrescription(f) {
+  const p = { customer: Number(f.customer), doctor: String(f.doctor ?? '').trim(), date: String(f.date ?? '') };
+  if (!Number.isInteger(p.customer)) return 'Choose a customer';
+  if (!p.doctor) return 'Doctor name is required';
+  if (p.doctor.length > 100) return 'Doctor name is too long';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date) || isNaN(Date.parse(p.date))) return 'Prescription date must be a valid date';
+  return p;
+}
+
+// Create: link the new Prescription to its customer. Update: change details and re-link
+// HAS_PRESCRIPTION if the customer changed. Both return no rows if the customer/prescription is missing.
+const CREATE_PRESCRIPTION = `
+  MATCH (c:Customer {customer_id: $customer})
+  CALL () { MATCH (x:Prescription) RETURN coalesce(max(x.prescription_id), 500) + 1 AS pid }
+  CREATE (c)-[:HAS_PRESCRIPTION]->(p:Prescription {prescription_id: pid, doctor_name: $doctor,
+                                                   prescription_date: date($date)})
+  RETURN p.prescription_id AS id`;
+const UPDATE_PRESCRIPTION = `
+  MATCH (p:Prescription {prescription_id: $id}), (c:Customer {customer_id: $customer})
+  SET p.doctor_name = $doctor, p.prescription_date = date($date)
+  WITH p, c
+  OPTIONAL MATCH (:Customer)-[old:HAS_PRESCRIPTION]->(p)
+  DELETE old
+  WITH DISTINCT p, c
+  MERGE (c)-[:HAS_PRESCRIPTION]->(p)
+  RETURN p.prescription_id AS id`;
 
 const MODES = ['Cash', 'UPI', 'Card'], STATUSES = ['Paid', 'Pending'];
 
@@ -248,6 +275,16 @@ export async function onRequest({ request, env, params }) {
       const p = parsePerson(await request.json().catch(() => ({})));
       if (typeof p === 'string') return json({ error: p }, 400);
       return await savePerson(env, name, request.method === 'PUT' ? numId : null, p);
+    }
+
+    if (name === 'prescription' && ((request.method === 'POST' && path.length === 1) ||
+                                    (request.method === 'PUT' && numId !== null && path.length === 2))) {
+      const p = parsePrescription(await request.json().catch(() => ({})));
+      if (typeof p === 'string') return json({ error: p }, 400);
+      const isNew = request.method === 'POST';
+      const rows = await run(env, isNew ? CREATE_PRESCRIPTION : UPDATE_PRESCRIPTION, { ...p, id: numId });
+      if (!rows.length) return json({ error: isNew ? 'Customer not found' : 'Prescription or customer not found' }, 404);
+      return json({ ok: true, id: rows[0].id });
     }
 
     if (request.method === 'POST' && name === 'sale' && path.length === 1) {
