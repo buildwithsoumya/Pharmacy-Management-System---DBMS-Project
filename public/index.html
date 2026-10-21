@@ -77,14 +77,19 @@
 
   form { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; max-width: 640px; }
   label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; color: var(--text-2); }
-  label.full { grid-column: span 2; }
+  form .full { grid-column: span 2; }
+  select:disabled, input:disabled { background: var(--bg); color: var(--text-2); }
+  .items-head { font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; }
+  .item { display: grid; grid-template-columns: minmax(0, 1fr) 80px 96px auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .item .line { text-align: right; font-variant-numeric: tabular-nums; }
+  .total { margin-left: auto; font-weight: 700; font-size: 15px; }
   input, select, button { font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-width: 0; }
   input:focus, select:focus { outline: 2px solid var(--green-soft); border-color: var(--green); }
   button { cursor: pointer; font-weight: 500; }
   button:hover { background: var(--bg); }
   button.primary { background: var(--green); border-color: var(--green); color: #fff; }
   button.primary:hover { background: var(--green-dark); }
-  .actions { grid-column: span 2; display: flex; gap: 10px; align-items: center; }
+  .actions { grid-column: span 2; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   button.small { padding: 4px 10px; font-size: 12.5px; }
   button.danger { color: var(--bad); }
   #msg { margin: 0; font-size: 13px; }
@@ -104,7 +109,9 @@
     .grid { grid-template-columns: 1fr; }
     .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     form { grid-template-columns: 1fr; }
-    label.full, .actions { grid-column: span 1; }
+    form .full, .actions { grid-column: span 1; }
+    .item { grid-template-columns: minmax(0, 1fr) 64px auto; }
+    .item .line { display: none; }
     #graph { height: 420px; }
   }
 </style>
@@ -124,6 +131,7 @@
       <a href="#alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Alerts</a>
       <div class="group">Business</div>
       <a href="#sales"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>Sales</a>
+      <a href="#new-sale" onclick="openSale(); return false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2h16v20l-3-2-3 2-2-2-2 2-3-2-3 2z"/><path d="M12 7v6M9 10h6"/></svg>New sale</a>
       <a href="#directory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Suppliers &amp; Rx</a>
       <div class="group">Insights</div>
       <a href="#analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/></svg>Analytics</a>
@@ -179,14 +187,40 @@
     <section class="view" id="sales">
       <div class="head"><h1>Sales</h1><p>Transactions with the customer, the employee who handled them, and the amount.</p></div>
       <div class="grid">
-        <div class="card full"><div class="scroll"><table>
-          <thead><tr><th>Sale</th><th>Date</th><th>Customer</th><th>Handled by</th><th>Payment</th><th>Status</th><th class="num">Amount</th></tr></thead>
+        <div class="card full">
+          <div class="toolbar"><button class="primary" onclick="openSale()">+ New sale</button></div>
+          <div class="scroll"><table>
+          <thead><tr><th>Sale</th><th>Date</th><th>Customer</th><th>Handled by</th><th>Items</th><th>Payment</th><th>Status</th><th class="num">Amount</th><th></th></tr></thead>
           <tbody id="salesRows"></tbody>
         </table></div></div>
         <div class="card full"><h2>Purchase trace <small>Customer → Sale → Medicine ← Supplier</small></h2><div class="scroll"><table>
           <thead><tr><th>Customer</th><th>Sale</th><th>Medicine</th><th class="num">Qty</th><th>Supplied by</th></tr></thead>
           <tbody id="history"></tbody>
         </table></div></div>
+      </div>
+    </section>
+
+    <section class="view" id="new-sale">
+      <div class="head"><h1 id="saleTitle">New sale</h1><p id="saleSub"></p></div>
+      <div class="card">
+        <form id="saleForm">
+          <label>Customer<select name="customer" id="customerSelect" required></select></label>
+          <label>Handled by<select name="employee" id="employeeSelect" required></select></label>
+          <label>Sale date<input name="date" type="date" required></label>
+          <label>Payment mode<select name="mode"><option>Cash</option><option>UPI</option><option>Card</option></select></label>
+          <label>Payment status<select name="status"><option>Paid</option><option>Pending</option></select></label>
+          <div class="full">
+            <div class="items-head">Items</div>
+            <div id="items"></div>
+            <button type="button" class="small" id="addItem">+ Add item</button>
+          </div>
+          <div class="actions">
+            <button class="primary" type="submit" id="saleSubmit">Record sale</button>
+            <button type="button" onclick="openSale()">Clear</button>
+            <p id="saleMsg" role="status"></p>
+            <span class="total" id="saleTotal"></span>
+          </div>
+        </form>
       </div>
     </section>
 
@@ -245,7 +279,8 @@ addEventListener('hashchange', show);
 
 /* ---------- Data ---------- */
 async function load() {
-  const names = ['kpis','medicines','low_stock','expiring','top_medicines','sales','suppliers','prescriptions','history','graph','supplier_list'];
+  const names = ['kpis','medicines','low_stock','expiring','top_medicines','sales','suppliers','prescriptions','history','graph',
+                 'supplier_list','customer_list','employee_list'];
   (await Promise.all(names.map(get))).forEach((d, i) => D[names[i]] = d);
   const k = D.kpis;
 
@@ -263,7 +298,13 @@ async function load() {
 
   renderInventory();
   rows('salesRows', D.sales, s => `<tr><td>${s.id}</td><td>${esc(s.date)}</td><td>${esc(s.customer)}</td><td>${esc(s.employee)}</td>
-    <td>${esc(s.mode)}</td><td><span class="tag ok">${esc(s.status)}</span></td><td class="num">${inr(s.amount)}</td></tr>`, 7);
+    <td>${s.items.map(i => `${esc(i.name)} ×${i.qty}`).join(', ')}</td><td>${esc(s.mode)}</td>
+    <td><span class="tag ${s.status === 'Paid' ? 'ok' : 'warn'}">${esc(s.status)}</span></td><td class="num">${inr(s.amount)}</td>
+    <td class="num"><button class="small" data-edit-sale="${s.id}">Edit</button> <button class="small danger" data-del-sale="${s.id}">Delete</button></td></tr>`, 9);
+  const opts = l => l.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  $('customerSelect').innerHTML = opts(D.customer_list);
+  $('employeeSelect').innerHTML = opts(D.employee_list);
+  if (editingSale === null && !$('items').children.length) openSale(null, false);
   rows('history', D.history, h => `<tr><td>${esc(h.customer)}</td><td>${h.sale}</td><td>${esc(h.medicine)}</td>
     <td class="num">${h.qty}</td><td>${esc(h.supplier)}</td></tr>`, 5);
   rows('suppliers', D.suppliers, s => `<tr><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td class="num">${s.medicines}</td>
@@ -334,7 +375,7 @@ function drawGraph() {
 
 /* ---------- Add / update / delete ---------- */
 const form = $('medForm'), msg = $('msg');
-function say(text, ok) { msg.textContent = text; msg.style.color = ok ? 'var(--green-dark)' : 'var(--bad)'; }
+function say(text, ok, el = msg) { el.textContent = text; el.style.color = ok ? 'var(--green-dark)' : 'var(--bad)'; }
 function openForm(m) {
   form.reset(); say('', true);
   $('formTitle').textContent = m ? `Update ${m.name}` : 'Add medicine';
@@ -362,6 +403,89 @@ $('inventoryRows').addEventListener('click', async e => {
   if (edit) openForm(D.medicines.find(x => String(x.id) === edit));
   if (del && confirm(`Delete medicine ${del}? This also removes its relationships.`)) {
     await fetch('/api/medicine/' + del, { method: 'DELETE' }); load();
+  }
+});
+
+/* ---------- Sales: record / update payment / delete ---------- */
+const saleForm = $('saleForm'), saleMsg = $('saleMsg');
+let editingSale = null;
+
+function medOptions(selected) {
+  return D.medicines.map(m => `<option value="${m.id}" ${m.id == selected ? 'selected' : ''}>${esc(m.name)} · ${inr(m.price)} · ${m.stock} in stock</option>`).join('');
+}
+function addItem(medicine, qty = 1) {
+  const row = document.createElement('div');
+  row.className = 'item';
+  row.innerHTML = `<select class="med" aria-label="Medicine">${medOptions(medicine)}</select>
+    <input class="qty" type="number" min="1" step="1" value="${qty}" aria-label="Quantity" required>
+    <span class="line"></span><button type="button" class="small danger rm" aria-label="Remove item">✕</button>`;
+  $('items').append(row);
+  saleTotal();
+}
+function saleTotal() {
+  let total = 0;
+  $('items').querySelectorAll('.item').forEach(r => {
+    const m = D.medicines.find(x => String(x.id) === r.querySelector('.med').value);
+    const v = (m?.price ?? 0) * (Number(r.querySelector('.qty').value) || 0);
+    r.querySelector('.line').textContent = inr(v);
+    total += v;
+  });
+  $('saleTotal').textContent = 'Total ' + inr(total);
+}
+$('items').addEventListener('input', saleTotal);
+$('items').addEventListener('click', e => {
+  if (e.target.classList.contains('rm') && $('items').children.length > 1) { e.target.closest('.item').remove(); saleTotal(); }
+});
+$('addItem').addEventListener('click', () => addItem());
+
+// openSale() = blank new-sale form; openSale(sale) = update that sale's payment details.
+function openSale(s = null, go = true) {
+  editingSale = s?.id ?? null;
+  saleForm.reset(); say('', true, saleMsg);
+  $('items').innerHTML = '';
+  $('saleTitle').textContent = s ? `Update sale ${s.id}` : 'New sale';
+  $('saleSub').textContent = s
+    ? 'Only payment details can be changed. To change items, delete the sale (stock is restored) and record a new one.'
+    : 'Creates the Sale node, links it to the customer, employee and medicines, and reduces stock, all in one transaction.';
+  $('saleSubmit').textContent = s ? 'Save payment' : 'Record sale';
+  saleForm.elements.date.value = s?.date ?? new Date().toLocaleDateString('en-CA');
+  if (s) {
+    saleForm.elements.customer.value = s.customer_id;
+    saleForm.elements.employee.value = s.employee_id;
+    saleForm.elements.mode.value = s.mode;
+    saleForm.elements.status.value = s.status;
+    s.items.forEach(i => addItem(i.medicine, i.qty));
+  } else addItem();
+  // In update mode everything except payment is read-only.
+  saleForm.querySelectorAll('#customerSelect, #employeeSelect, [name=date], #items select, #items input, #items button, #addItem')
+    .forEach(el => el.disabled = !!s);
+  $('addItem').hidden = !!s;
+  if (go) location.hash = 'new-sale';
+}
+
+saleForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(saleForm));
+  const id = editingSale;
+  const body = id ? { mode: f.mode, status: f.status } : {
+    ...f, items: [...$('items').querySelectorAll('.item')].map(r => ({ medicine: r.querySelector('.med').value, qty: r.querySelector('.qty').value })),
+  };
+  const r = await fetch('/api/sale' + (id ? '/' + id : ''), {
+    method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const res = await r.json();
+  if (!r.ok) return say(res.error, false, saleMsg);
+  await load();
+  if (id) { openSale(D.sales.find(s => s.id === id), false); say(`Updated sale ${id}.`, true, saleMsg); }
+  else { openSale(null, false); say(`Recorded sale ${res.id}. Stock updated.`, true, saleMsg); }
+});
+
+$('salesRows').addEventListener('click', async e => {
+  const { editSale, delSale } = e.target.dataset;
+  if (editSale) openSale(D.sales.find(s => String(s.id) === editSale));
+  if (delSale && confirm(`Delete sale ${delSale}? Its items will be returned to stock.`)) {
+    await fetch('/api/sale/' + delSale, { method: 'DELETE' });
+    load();
   }
 });
 

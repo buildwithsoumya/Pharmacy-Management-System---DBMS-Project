@@ -27,8 +27,11 @@ const QUERIES = {
     RETURN m.medicine_name AS name, sum(r.quantity) AS sold ORDER BY sold DESC`,
   sales: `
     MATCH (c:Customer)-[:MAKES]->(s:Sale)<-[:HANDLES]-(e:Employee), (s)-[r:CONTAINS]->(m:Medicine)
-    RETURN s.sale_id AS id, toString(s.sale_date) AS date, c.customer_name AS customer,
-           e.employee_name AS employee, s.payment_mode AS mode, s.payment_status AS status,
+    RETURN s.sale_id AS id, toString(s.sale_date) AS date,
+           c.customer_id AS customer_id, c.customer_name AS customer,
+           e.employee_id AS employee_id, e.employee_name AS employee,
+           s.payment_mode AS mode, s.payment_status AS status,
+           collect({medicine: m.medicine_id, name: m.medicine_name, qty: r.quantity}) AS items,
            sum(r.quantity * m.price) AS amount
     ORDER BY id`,
   suppliers: `
@@ -44,6 +47,8 @@ const QUERIES = {
     RETURN c.customer_name AS customer, p.prescription_id AS id, p.doctor_name AS doctor,
            toString(p.prescription_date) AS date ORDER BY id`,
   supplier_list: `MATCH (s:Supplier) RETURN s.supplier_id AS id, s.supplier_name AS name ORDER BY id`,
+  customer_list: `MATCH (c:Customer) RETURN c.customer_id AS id, c.customer_name AS name ORDER BY id`,
+  employee_list: `MATCH (e:Employee) RETURN e.employee_id AS id, e.employee_name AS name ORDER BY id`,
   graph: `
     MATCH (a)-[r]->(b)
     WITH collect(DISTINCT a) + collect(DISTINCT b) AS ns, collect(r) AS rs
@@ -89,6 +94,72 @@ function parseMedicine(f) {
   return p;
 }
 
+const MODES = ['Cash', 'UPI', 'Card'], STATUSES = ['Paid', 'Pending'];
+
+function parsePayment(f) {
+  if (!MODES.includes(f.mode)) return `Payment mode must be one of ${MODES.join(', ')}`;
+  if (!STATUSES.includes(f.status)) return `Payment status must be one of ${STATUSES.join(', ')}`;
+  return { mode: f.mode, status: f.status };
+}
+
+function parseSale(f) {
+  const pay = parsePayment(f);
+  if (typeof pay === 'string') return pay;
+  const p = {
+    ...pay, customer: Number(f.customer), employee: Number(f.employee), date: String(f.date ?? ''),
+    items: (Array.isArray(f.items) ? f.items : []).map(i => ({ medicine: Number(i.medicine), qty: Number(i.qty) })),
+  };
+  if (!Number.isInteger(p.customer) || !Number.isInteger(p.employee)) return 'Choose a customer and an employee';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date) || isNaN(Date.parse(p.date))) return 'Sale date must be a valid date';
+  if (!p.items.length) return 'Add at least one medicine';
+  if (p.items.some(i => !Number.isInteger(i.medicine) || !Number.isInteger(i.qty) || i.qty < 1))
+    return 'Each item needs a medicine and a whole-number quantity of at least 1';
+  if (new Set(p.items.map(i => i.medicine)).size !== p.items.length) return 'Each medicine can appear only once per sale';
+  return p;
+}
+
+// Creates the Sale, its MAKES / HANDLES / CONTAINS relationships and reduces stock in ONE
+// transaction. The WHERE re-checks stock inside the transaction, so nothing is written if any
+// item is short (returns no rows).
+const CREATE_SALE = `
+  UNWIND $items AS it
+  MATCH (m:Medicine {medicine_id: it.medicine})
+  WITH collect({m: m, qty: it.qty}) AS lines
+  WHERE size(lines) = size($items) AND all(l IN lines WHERE l.m.stock >= l.qty)
+  MATCH (c:Customer {customer_id: $customer}), (e:Employee {employee_id: $employee})
+  CALL () { MATCH (x:Sale) RETURN coalesce(max(x.sale_id), 600) + 1 AS sid }
+  CREATE (s:Sale {sale_id: sid, sale_date: date($date), payment_mode: $mode, payment_status: $status})
+  CREATE (c)-[:MAKES]->(s), (e)-[:HANDLES]->(s)
+  WITH s, lines
+  UNWIND lines AS l
+  WITH s, l.m AS m, l.qty AS qty
+  CREATE (s)-[:CONTAINS {quantity: qty}]->(m)
+  SET m.stock = m.stock - qty
+  RETURN DISTINCT s.sale_id AS id`;
+
+// Puts each item's quantity back into stock, then removes the sale and its relationships.
+const DELETE_SALE = `
+  MATCH (s:Sale {sale_id: $id})
+  OPTIONAL MATCH (s)-[r:CONTAINS]->(m:Medicine)
+  SET m.stock = m.stock + r.quantity
+  WITH DISTINCT s
+  DETACH DELETE s
+  RETURN count(*) AS deleted`;
+
+async function createSale(env, p) {
+  // Friendly pre-check so the user sees which item is the problem.
+  const stock = await run(env, `
+    UNWIND $items AS it OPTIONAL MATCH (m:Medicine {medicine_id: it.medicine})
+    RETURN it.medicine AS id, m.medicine_name AS name, m.stock AS stock, it.qty AS qty`, { items: p.items });
+  for (const s of stock) {
+    if (s.name === null) return json({ error: `Medicine ${s.id} does not exist` }, 400);
+    if (s.stock < s.qty) return json({ error: `Only ${s.stock} units of ${s.name} in stock` }, 400);
+  }
+  const rows = await run(env, CREATE_SALE, p);
+  if (!rows.length) return json({ error: 'Sale not recorded: stock changed or customer/employee not found' }, 409);
+  return json({ ok: true, id: rows[0].id });
+}
+
 export async function onRequest({ request, env, params }) {
   const path = params.path ?? [];
   const [name, id] = path;
@@ -115,6 +186,29 @@ export async function onRequest({ request, env, params }) {
 
     if (request.method === 'DELETE' && name === 'medicine' && /^\d+$/.test(id ?? '') && path.length === 2) {
       await run(env, 'MATCH (m:Medicine {medicine_id: $id}) DETACH DELETE m', { id: Number(id) });
+      return json({ ok: true });
+    }
+
+    const saleId = /^\d+$/.test(id ?? '') ? Number(id) : null;
+
+    if (request.method === 'POST' && name === 'sale' && path.length === 1) {
+      const p = parseSale(await request.json().catch(() => ({})));
+      if (typeof p === 'string') return json({ error: p }, 400);
+      return await createSale(env, p);
+    }
+
+    if (request.method === 'PUT' && name === 'sale' && saleId !== null && path.length === 2) {
+      // Only payment details are editable; items are fixed once stock has been deducted.
+      const p = parsePayment(await request.json().catch(() => ({})));
+      if (typeof p === 'string') return json({ error: p }, 400);
+      const rows = await run(env, `
+        MATCH (s:Sale {sale_id: $id}) SET s.payment_mode = $mode, s.payment_status = $status
+        RETURN s.sale_id AS id`, { ...p, id: saleId });
+      return rows.length ? json({ ok: true }) : json({ error: `Sale ${saleId} not found` }, 404);
+    }
+
+    if (request.method === 'DELETE' && name === 'sale' && saleId !== null && path.length === 2) {
+      await run(env, DELETE_SALE, { id: saleId });
       return json({ ok: true });
     }
 
