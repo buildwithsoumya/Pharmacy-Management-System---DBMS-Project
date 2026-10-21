@@ -9,3 +9,8 @@ __pycache__/
 .claude/
 *.docx
 ~$*
+
+# Cloudflare
+.dev.vars
+.wrangler/
+node_modules/
