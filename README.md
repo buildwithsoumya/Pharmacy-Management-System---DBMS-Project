@@ -39,6 +39,8 @@ Each key has a uniqueness constraint. The sample dataset has **13 nodes and 12 r
 
 ## Dashboard features
 
+A clean light UI with a sidebar. Each section is its own page: **Overview, Inventory, Add / Update, Alerts, Sales, Suppliers & Rx, Analytics, Graph**. On phones the sidebar becomes a scrollable top bar.
+
 - **KPI cards:** medicines, units in stock, customers, suppliers, employees, sales and total revenue
 - **Charts:** units sold per medicine, revenue per sale
 - **Inventory table** with *Low stock* and *Expiring* flags
