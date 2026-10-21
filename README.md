@@ -41,24 +41,37 @@ Each key has a uniqueness constraint. The sample dataset has **13 nodes and 12 r
 
 ## Dashboard features
 
-A dark (near-black) or light (slate) UI with an orange accent: switch with the sun/moon button next to the logo; the choice is remembered. Sidebar navigation and subtle animations. Each section is its own page: **Overview, Inventory, Add / Update, Alerts, Sales, New sale, Employees, Suppliers, Prescriptions, Analytics, Graph**. On phones the sidebar becomes a scrollable top bar.
+Each section is its own page behind a sidebar: **Overview, Inventory, Add / Update, Alerts, Sales, New sale, Employees, Suppliers, Prescriptions, Analytics, Graph**. On phones the sidebar becomes a scrollable top bar. Every panel reads live from Neo4j; nothing is hard-coded.
 
-- **KPI cards:** medicines, units in stock, customers, suppliers, employees, sales and total revenue
-- **Charts:** units sold per medicine, revenue per sale
-- **Inventory table** with *Low stock* and *Expiring* flags
-- **Add / update / delete medicines** from the browser (Cypher `MERGE` and `DETACH DELETE`), optionally linking a supplier
-- **Alerts:** low stock (< 80 units), medicines expiring before 2028
-- **Sales:** customer, handling employee, items, payment, and amount (`Σ quantity × price`)
+### Overview and analytics
+- **KPI cards:** total revenue, medicines, units in stock, sales, customers, suppliers and employees
+- **Charts:** units sold per medicine, revenue per sale, and stock level per medicine
+- **Alerts:** low stock (< 80 units) and medicines expiring before 2028
+- **Live status** in the sidebar shows whether the database is reachable
+
+### Inventory
+- **Searchable inventory table** with *Low stock* and *Expiring* flags
+- **Add, update and delete medicines** (Cypher `MERGE` and `DETACH DELETE`), optionally linking a supplier
+
+### Sales
+- **Sales list** with customer, handling employee, items, payment and amount (`Σ quantity × price`)
 - **Record a sale** with several medicines. In **one transaction** it creates the `Sale` node, its `MAKES`, `HANDLES` and `CONTAINS {quantity}` relationships, and reduces each medicine's stock. If any item is short of stock, nothing is written.
+- **New or existing customer:** choosing *+ New customer…* creates the `Customer` node in the same transaction as the sale, so a failed sale never leaves a stray customer behind.
 - **Update a sale's payment** (mode and status), or **delete a sale**, which returns its items to stock
-- **New or existing customer** when recording a sale. Choosing *+ New customer…* creates the `Customer` node in the same transaction as the sale, so a failed sale never leaves a stray customer behind.
-- **Employees and suppliers:** add and edit (name, 10-digit phone), with IDs assigned automatically. The Employees page shows how many sales each person has handled.
-- **Prescriptions:** add and edit (customer, doctor, date). Changing the customer re-links the `HAS_PRESCRIPTION` relationship.
-- **Suppliers** and the medicines they supply, plus **prescriptions** per customer
 - **Purchase trace:** a multi-hop traversal `Customer → Sale → Medicine ← Supplier`
-- **Interactive graph view** of the whole database. Click any node or relationship to see its labels, properties and every connection as JSON, then use the buttons to hop from node to node.
 
-Every panel reads live from Neo4j. Nothing is hard-coded.
+### People
+- **Employees and suppliers:** add and edit (name, 10-digit phone), with IDs assigned automatically. Employees show how many sales they've handled, and suppliers show the medicines they supply.
+- **Prescriptions:** add and edit (customer, doctor, date). Changing the customer re-links the `HAS_PRESCRIPTION` relationship.
+
+### Graph
+- **Interactive graph view** of the whole database
+- **Click any node or relationship** to see its labels, properties and every connection as JSON, then use the buttons to hop from node to node
+
+### Look and feel
+- **Dark (default) and light themes** with an orange accent. Switch with the sun/moon button next to the logo; the choice is remembered.
+- **Subtle animations:** page fades, staggered cards, KPI count-up and growing chart bars. All motion is turned off when the operating system's *reduce motion* setting is on.
+- Text colours are checked against WCAG AA contrast in both themes.
 
 ---
 
@@ -66,7 +79,7 @@ Every panel reads live from Neo4j. Nothing is hard-coded.
 
 - **Database:** Neo4j AuraDB (Free tier), Cypher
 - **Backend:** a Cloudflare Pages Function in JavaScript. It sends Cypher to Aura over the [Neo4j HTTPS Query API](https://neo4j.com/docs/query-api/current/).
-- **Frontend:** HTML, CSS and JavaScript, with [Chart.js](https://www.chartjs.org/) and [vis-network](https://visjs.github.io/vis-network/) from CDN. No build step.
+- **Frontend:** plain HTML, CSS and JavaScript in a single page, with [Chart.js](https://www.chartjs.org/) and [vis-network](https://visjs.github.io/vis-network/) from CDN and the Inter and Bricolage Grotesque fonts from Google Fonts. No framework, no build step.
 - **Hosting:** Cloudflare Pages. Neo4j credentials are stored as encrypted Pages secrets.
 
 ### Architecture
@@ -76,7 +89,7 @@ Browser ──fetch /api/*──▶ Cloudflare Pages Function ──HTTPS + Cyph
 (public/index.html)       (functions/api/[[path]].js)                   (Query API v2)
 ```
 
-Cloudflare Workers cannot open Neo4j's Bolt TCP connection, so the function uses Aura's HTTPS Query API. The database, data and Cypher queries are the same either way.
+Neo4j's usual Bolt protocol keeps a long-lived connection open, which suits an always-running server. A Pages Function is serverless and runs only for the length of each request, and the official Neo4j driver isn't built for Cloudflare's runtime. So the function sends each Cypher statement as an HTTPS request to Aura's Query API instead. The database, data and Cypher queries are the same either way. Each request runs as its own transaction.
 
 ---
 
@@ -150,24 +163,24 @@ npx wrangler pages deploy --project-name pharmacy-dashboard --branch main
 | GET | `/api/low_stock` | Medicines with stock < 80 |
 | GET | `/api/expiring` | Medicines expiring before 2028-01-01 |
 | GET | `/api/top_medicines` | Units sold per medicine |
-| GET | `/api/sales` | Sales with customer, employee and amount |
+| GET | `/api/sales` | Sales with customer, employee, items and amount |
 | GET | `/api/suppliers` | Suppliers and the medicines they supply |
 | GET | `/api/prescriptions` | Customer prescriptions |
 | GET | `/api/history` | Customer → Sale → Medicine ← Supplier traversal |
-| GET | `/api/graph` | Nodes and edges for the graph view |
+| GET | `/api/graph` | Every node and relationship, with labels and properties, for the graph view |
 | GET | `/api/employees` | Employees with the number of sales handled |
 | GET | `/api/supplier_list`, `/api/customer_list`, `/api/employee_list` | IDs and names for the form dropdowns |
 | POST | `/api/employee`, `/api/supplier` | Add an employee or supplier `{name, phone}` (ID assigned automatically) |
 | PUT | `/api/employee/<id>`, `/api/supplier/<id>` | Edit an employee's or supplier's name and phone |
 | POST | `/api/prescription` | Add a prescription `{customer, doctor, date}` (ID assigned automatically) |
 | PUT | `/api/prescription/<id>` | Edit a prescription; changing `customer` re-links it |
-| POST | `/api/medicine` | Create or update a medicine (JSON body) |
+| POST | `/api/medicine` | Create or update a medicine `{id, name, category, price, stock, expiry, supplier?}` (`MERGE` on `id`) |
 | DELETE | `/api/medicine/<id>` | Delete a medicine and its relationships |
 | POST | `/api/sale` | Record a sale: `{customer, employee, date, mode, status, items: [{medicine, qty}]}`. Reduces stock. Use `customer: "new"` with `new_name` (and optional `new_phone`) to create a customer at the same time. |
 | PUT | `/api/sale/<id>` | Update a sale's payment `{mode, status}` |
 | DELETE | `/api/sale/<id>` | Delete a sale and return its items to stock |
 
-All queries are parameterised. User input is validated and never concatenated into Cypher.
+All queries are parameterised, and user input is validated on the server, never concatenated into Cypher. Cypher can't parameterise labels, so the few queries that need a label take it from a fixed list in the code, never from the request. Invalid input returns `400` with a message, and unknown records return `404`.
 
 ---
 
@@ -201,3 +214,13 @@ RETURN DISTINCT c.customer_name, m.medicine_name, sup.supplier_name;
 | Visualisation | Tabular results | Graph visualisation |
 
 Neo4j is used here as an **extension** of the relational system, not a replacement.
+
+---
+
+## Known limitations
+
+- **No login:** anyone with the link can view and edit data. Authentication and roles (for example pharmacist and admin) would be the next step.
+- **Sale totals use the current price:** a sale stores quantities, not the price at the time of sale, so changing a medicine's price changes old sale totals too. Storing `unit_price` on the `CONTAINS` relationship would fix this.
+- **No delete for employees, suppliers or prescriptions:** past sales and supply links refer to them, so they can only be added and edited.
+- **IDs are the current maximum plus one:** this is fine for a single user. Under concurrent writes, the uniqueness constraints reject a clash rather than allowing a duplicate.
+- **Aura Free pauses** after a few days without activity. Resume it from the Aura console.
