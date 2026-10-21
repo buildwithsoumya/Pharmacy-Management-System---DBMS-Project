@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pharmacy Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
@@ -16,49 +17,87 @@
     --green: #1f7a4d; --green-dark: #17603c; --green-tint: #e9f4ee; --green-soft: #cfe6d8;
     --warn-bg: #fdf3dc; --warn: #8a5a00; --bad-bg: #fbe7e6; --bad: #a83232;
     --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#6250d6;
+    --display: "Bricolage Grotesque", Inter, system-ui, sans-serif;
+    --ease: cubic-bezier(.2, .7, .2, 1);
+    --shadow: 0 1px 2px rgba(28, 36, 32, .04), 0 4px 14px rgba(28, 36, 32, .05);
+    --shadow-lift: 0 2px 4px rgba(28, 36, 32, .05), 0 12px 28px rgba(31, 122, 77, .10);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.5 Inter, system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
-  .app { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+  body {
+    margin: 0; font: 14px/1.5 Inter, system-ui, "Segoe UI", sans-serif; color: var(--text);
+    /* Faint dot grid (a nod to graph nodes) with a soft green glow in the corner. */
+    background:
+      radial-gradient(900px 500px at 100% -10%, rgba(31, 122, 77, .07), transparent 60%),
+      radial-gradient(circle, rgba(28, 36, 32, .07) 1px, transparent 1.2px) 0 0 / 22px 22px,
+      var(--bg);
+    background-attachment: fixed;
+  }
+  .app { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
 
   /* Sidebar */
-  aside { background: var(--surface); border-right: 1px solid var(--border); padding: 22px 14px; position: sticky; top: 0; height: 100vh; }
-  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 22px; }
-  .brand .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--green); display: grid; place-items: center; color: #fff; }
-  .brand b { display: block; font-size: 15px; line-height: 1.2; }
+  aside { background: rgba(255, 255, 255, .86); backdrop-filter: blur(8px); border-right: 1px solid var(--border);
+          padding: 22px 14px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 22px; }
+  .brand .logo { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+                 background: linear-gradient(140deg, #2a9a63, var(--green-dark)); box-shadow: 0 4px 12px rgba(31, 122, 77, .3); }
+  .brand b { display: block; font: 700 17px/1.15 var(--display); letter-spacing: -.01em; }
+  .brand b em { font-style: normal; color: var(--green); }
   .brand small { color: var(--muted); font-size: 12px; }
-  nav { display: grid; gap: 2px; }
-  nav a { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 8px; color: var(--text-2); text-decoration: none; font-weight: 500; }
-  nav a svg { width: 18px; height: 18px; flex: none; }
+  nav { display: grid; gap: 2px; overflow-y: auto; }
+  nav a { position: relative; display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 9px;
+          color: var(--text-2); text-decoration: none; font-weight: 500;
+          transition: background .2s, color .2s, transform .2s var(--ease); }
+  nav a::before { content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0;
+                  background: var(--green); transform: scaleY(0); transition: transform .3s var(--ease); }
+  nav a svg { width: 18px; height: 18px; flex: none; transition: transform .25s var(--ease); }
   nav a:hover { background: var(--bg); color: var(--text); }
+  nav a:hover svg { transform: translateX(2px); }
   nav a.active { background: var(--green-tint); color: var(--green-dark); }
-  nav .group { margin: 16px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  nav a.active::before { transform: scaleY(1); }
+  nav .group { margin: 16px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .status { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px;
+            background: var(--bg); border: 1px solid var(--border); font-size: 12px; color: var(--text-2); }
+  .status i { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .status.ok i { background: #22a35f; }
+  .status.ok i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #22a35f; animation: ping 2s var(--ease) infinite; }
+  .status.down i { background: var(--bad); }
 
   /* Content */
-  main { padding: 28px 36px 48px; max-width: 1200px; width: 100%; }
+  main { padding: 30px 40px 56px; max-width: 1220px; width: 100%; }
   .view { display: none; }
-  .view.active { display: block; }
-  .head { margin-bottom: 22px; }
-  .head h1 { margin: 0; font-size: 22px; font-weight: 700; }
-  .head p { margin: 4px 0 0; color: var(--text-2); }
+  .view.active { display: block; animation: fade .3s ease backwards; }
+  .head { margin-bottom: 24px; }
+  .eyebrow { display: inline-block; margin-bottom: 6px; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--green); }
+  .head h1 { margin: 0; font: 700 28px/1.15 var(--display); letter-spacing: -.02em; }
+  .head p { margin: 6px 0 0; color: var(--text-2); }
   .grid { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid .full { grid-column: 1 / -1; }
   .grid.split { grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); align-items: start; }
   form.stack { grid-template-columns: 1fr; }
   form.stack .actions { grid-column: auto; }
   .pair { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; padding: 14px; border-radius: 10px; background: var(--green-tint); }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 0; }
-  .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
-  .card h2 small { color: var(--muted); font-weight: 400; margin-left: 4px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; min-width: 0;
+          box-shadow: var(--shadow); transition: box-shadow .3s var(--ease), transform .3s var(--ease); }
+  .card h2 { margin: 0 0 14px; font: 600 16px/1.3 var(--display); letter-spacing: -.01em; }
+  .card h2 small { font-family: Inter, sans-serif; color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 4px; }
 
   .kpis { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 18px; }
-  .kpi.hero { grid-column: span 2; }
-  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .kpi { position: relative; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+         padding: 16px 18px; box-shadow: var(--shadow); transition: box-shadow .3s var(--ease), transform .3s var(--ease); }
+  .kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
   .kpi span { color: var(--text-2); font-size: 13px; }
-  .kpi b { display: block; margin-top: 4px; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .kpi.hero { background: var(--green); border-color: var(--green); }
+  .kpi b { display: block; margin-top: 4px; font: 700 30px/1.1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .kpi.hero { grid-column: span 2; border: 0; color: #fff;
+              background: linear-gradient(135deg, #2a9a63 0%, var(--green) 45%, var(--green-dark) 100%); }
+  /* Decorative "graph" of rings and dots in the hero tile. */
+  .kpi.hero::after { content: ""; position: absolute; right: -40px; top: -50px; width: 220px; height: 220px; border-radius: 50%;
+                     background: radial-gradient(circle at 30% 70%, rgba(255,255,255,.35) 0 4px, transparent 5px),
+                                 radial-gradient(circle at 62% 38%, rgba(255,255,255,.3) 0 3px, transparent 4px),
+                                 radial-gradient(circle, transparent 54%, rgba(255,255,255,.12) 55% 56%, transparent 57%),
+                                 radial-gradient(circle, transparent 74%, rgba(255,255,255,.1) 75% 76%, transparent 77%);
+                     animation: drift 14s ease-in-out infinite alternate; }
   .kpi.hero span { color: var(--green-soft); }
-  .kpi.hero b { color: #fff; }
+  .kpi.hero b { color: #fff; font-size: 36px; }
 
   .chart { position: relative; height: 280px; }
   .scroll { overflow-x: auto; }
@@ -87,12 +126,14 @@
   .item { display: grid; grid-template-columns: minmax(0, 1fr) 80px 96px auto; gap: 8px; align-items: center; margin-bottom: 8px; }
   .item .line { text-align: right; font-variant-numeric: tabular-nums; }
   .total { margin-left: auto; font-weight: 700; font-size: 15px; }
-  input, select, button { font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-width: 0; }
-  input:focus, select:focus { outline: 2px solid var(--green-soft); border-color: var(--green); }
+  input, select, button { font: inherit; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-width: 0;
+                          transition: border-color .2s, box-shadow .2s, background .2s, color .2s, transform .15s var(--ease); }
+  input:focus, select:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 4px rgba(31, 122, 77, .14); }
   button { cursor: pointer; font-weight: 500; }
   button:hover { background: var(--bg); }
-  button.primary { background: var(--green); border-color: var(--green); color: #fff; }
-  button.primary:hover { background: var(--green-dark); }
+  button:active { transform: scale(.97); }
+  button.primary { background: var(--green); border-color: var(--green); color: #fff; box-shadow: 0 2px 8px rgba(31, 122, 77, .25); }
+  button.primary:hover { background: var(--green-dark); box-shadow: 0 4px 14px rgba(31, 122, 77, .32); }
   .actions { grid-column: span 2; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   button.small { padding: 4px 10px; font-size: 12.5px; }
   button.danger { color: var(--bad); }
@@ -115,14 +156,32 @@
   #inspectJson .k { color: var(--green-dark); } #inspectJson .s { color: #a3521f; } #inspectJson .n { color: #2a5fb0; }
   #inspectJson .b { color: #7a3fb0; }
 
+  /* ---------- Motion (kept short and subtle; all disabled for reduced-motion users) ---------- */
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ping { 0% { transform: scale(1); opacity: .6; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+  @keyframes drift { from { transform: rotate(0deg); } to { transform: rotate(25deg) translateX(-10px); } }
+  /* Cards and tiles in the page that just opened arrive in a quick stagger (--i is set in JS). */
+  /* "backwards" fill only: once finished, the element's own transform/hover styles apply again. */
+  .view.active .kpi, .view.active .card { animation: rise .5s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+  tbody tr, ul.list li { animation: fade .35s ease backwards; }
+  .tag { transition: transform .2s var(--ease); }
+  tr:hover .tag { transform: scale(1.05); }
+  #newCustomer:not([hidden]) .pair, #inspectJson.flash, .hops button, .item { animation: rise .35s var(--ease) backwards; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
   @media (max-width: 860px) {
     .app { grid-template-columns: 1fr; }
     aside { position: static; height: auto; padding: 14px 16px; border-right: 0; border-bottom: 1px solid var(--border); }
     .brand { padding-bottom: 12px; }
     nav { display: flex; overflow-x: auto; gap: 4px; }
     nav a { white-space: nowrap; }
-    nav .group { display: none; }
+    nav .group, .status { display: none; }
+    nav a::before { display: none; }
     main { padding: 20px 16px 40px; }
+    .head h1 { font-size: 24px; }
     .grid, .grid.split, .pair { grid-template-columns: 1fr; }
     .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     form { grid-template-columns: 1fr; }
@@ -137,8 +196,13 @@
 <div class="app">
   <aside>
     <div class="brand">
-      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
-      <div><b>PharmaGraph</b><small>Pharmacy Management</small></div>
+      <div class="logo" aria-hidden="true">
+        <!-- A capsule whose halves are joined like two graph nodes -->
+        <svg width="22" height="22" viewBox="0 0 24 24"><g transform="rotate(-45 12 12)">
+          <rect x="3" y="8" width="18" height="8" rx="4" fill="none" stroke="#fff" stroke-width="2"/>
+          <path d="M12 8h5a4 4 0 0 1 0 8h-5z" fill="#fff"/></g></svg>
+      </div>
+      <div><b>Pharma<em>Graph</em></b><small>Pharmacy Management</small></div>
     </div>
     <nav id="nav">
       <a href="#overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Overview</a>
@@ -157,6 +221,7 @@
       <a href="#analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/></svg>Analytics</a>
       <a href="#graph-view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.2 7.3 10.6 16M16.8 7.3 13.4 16M7.5 6h9"/></svg>Graph</a>
     </nav>
+    <div class="status" id="dbStatus" role="status"><i></i><span>Connecting to AuraDB…</span></div>
   </aside>
 
   <main>
@@ -345,10 +410,21 @@ const list = (id, data, fn, none) => $(id).innerHTML = data.length ? data.map(fn
 let D = {};
 
 /* ---------- Tabs (hash routing) ---------- */
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Small label above each page title, taken from the sidebar group the page sits in.
+document.querySelectorAll('.view').forEach(v => {
+  let el = document.querySelector(`#nav a[href="#${v.id}"]`)?.previousElementSibling;
+  while (el && !el.classList.contains('group')) el = el.previousElementSibling;
+  v.querySelector('.head')?.insertAdjacentHTML('afterbegin', `<span class="eyebrow">${el?.textContent ?? 'Dashboard'}</span>`);
+});
+
 function show() {
   const id = location.hash.slice(1) || 'overview';
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.hash === '#' + id));
+  // Stagger order for the entrance animation of this page's tiles and cards.
+  document.getElementById(id)?.querySelectorAll('.kpi, .card').forEach((el, i) => el.style.setProperty('--i', i));
   // Charts and graph need a visible container to size themselves, so draw on first view.
   if (D.kpis && id === 'analytics') drawCharts();
   if (D.kpis && id === 'graph-view') drawGraph();
@@ -363,10 +439,14 @@ async function load() {
   (await Promise.all(names.map(get))).forEach((d, i) => D[names[i]] = d);
   const k = D.kpis;
 
-  $('kpis').innerHTML = [
-    ['Total revenue', inr(k.revenue), 'hero'], ['Medicines', k.medicines], ['Units in stock', k.units],
+  const tiles = [
+    ['Total revenue', k.revenue, inr, 'hero'], ['Medicines', k.medicines], ['Units in stock', k.units],
     ['Sales', k.sales], ['Customers', k.customers], ['Suppliers', k.suppliers], ['Employees', k.employees],
-  ].map(([l, v, c]) => `<div class="kpi ${c || ''}"><span>${l}</span><b>${esc(v ?? 0)}</b></div>`).join('');
+  ];
+  $('kpis').innerHTML = tiles.map(([l, , , c]) => `<div class="kpi ${c || ''}"><span>${l}</span><b></b></div>`).join('');
+  $('kpis').querySelectorAll('b').forEach((b, i) => countUp(b, tiles[i][1] ?? 0, tiles[i][2] ?? (v => Math.round(v))));
+  $('dbStatus').className = 'status ok';
+  $('dbStatus').lastElementChild.textContent = 'Live · Neo4j AuraDB';
 
   const lowLi = r => `<li><span>${esc(r.name)}</span><span class="tag warn">${r.stock} units</span></li>`;
   list('lowStockMini', D.low_stock, lowLi, 'All medicines are well stocked');
@@ -426,6 +506,8 @@ function bar(id, labels, values, label, fmt) {
                                  borderRadius: 4, borderSkipped: 'start', maxBarThickness: 56 }] },
     options: {
       maintainAspectRatio: false,
+      // Bars grow in one after another.
+      animation: reduceMotion ? false : { duration: 700, easing: 'easeOutQuart', delay: c => c.type === 'data' ? c.dataIndex * 70 : 0 },
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${label}: ${fmt(c.parsed.y)}` } } },
       scales: {
         x: { grid: { display: false }, ticks: { color: css('--text-2') } },
@@ -486,6 +568,8 @@ function showInspector(title, dotColor, data, hops = []) {
   $('inspectJson').hidden = $('copyJson').hidden = false;
   $('inspectJson').innerHTML = highlight(data);
   $('inspectJson').dataset.raw = JSON.stringify(data, null, 2);
+  // Re-trigger the entrance animation for each new selection.
+  $('inspectJson').classList.remove('flash'); void $('inspectJson').offsetWidth; $('inspectJson').classList.add('flash');
   $('hops').innerHTML = hops.map(h => `<button type="button" data-hop="${esc(h.node.id)}" title="Go to ${esc(h.node.label)}">
     <i style="background:${graphColor[h.node.group]}"></i>${esc(h.node.label)} <small>${h.arrow}</small></button>`).join('');
 }
@@ -713,7 +797,24 @@ $('salesRows').addEventListener('click', async e => {
   }
 });
 
-load().catch(err => { $('kpis').innerHTML = `<div class="kpi"><span>Could not reach the database</span><b style="font-size:15px">${esc(err.message)}</b></div>`; show(); });
+// Numbers ease up from 0 to their value (instant when reduced motion is on).
+function countUp(el, to, fmt) {
+  if (reduceMotion) { el.textContent = fmt(to); return; }
+  const start = performance.now(), duration = 800;
+  const step = now => {
+    const p = Math.min(1, (now - start) / duration);
+    el.textContent = fmt(to * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+load().catch(err => {
+  $('kpis').innerHTML = `<div class="kpi"><span>Could not reach the database</span><b style="font-size:15px">${esc(err.message)}</b></div>`;
+  $('dbStatus').className = 'status down';
+  $('dbStatus').lastElementChild.textContent = 'Database unreachable';
+  show();
+});
 </script>
 </body>
 </html>
