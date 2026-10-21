@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pharmacy Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f4f2; --surface: #fcfcfb; --border: #e3e2de;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984;
+    --accent: #2a78d6; --warn-bg: #fff4d6; --warn: #8a5a00; --bad-bg: #fde6e5; --bad: #a32b2a;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#6250d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #111110; --surface: #1a1a19; --border: #2e2d2b;
+      --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e88;
+      --accent: #3987e5; --warn-bg: #3a2c0a; --warn: #f2c25b; --bad-bg: #3d1716; --bad: #f08a89;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#9085e9;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 20px 24px 8px; }
+  h1 { margin: 0; font-size: 22px; }
+  header p { margin: 2px 0 0; color: var(--text-2); }
+  main { padding: 16px 24px 40px; display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .card h2 { margin: 0 0 12px; font-size: 15px; }
+  .card h2 small { color: var(--muted); font-weight: 400; }
+  .w12 { grid-column: span 12; } .w8 { grid-column: span 8; } .w6 { grid-column: span 6; } .w4 { grid-column: span 4; }
+  .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi span { color: var(--text-2); font-size: 13px; }
+  .kpi b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .chart { position: relative; height: 240px; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-2); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  td.num, th.num { text-align: right; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; margin-left: 6px; }
+  .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.bad { background: var(--bad-bg); color: var(--bad); }
+  ul.list { margin: 0; padding: 0; list-style: none; }
+  ul.list li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  ul.list li:last-child { border: 0; }
+  .empty { color: var(--muted); }
+  form { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
+  label.full { grid-column: span 2; }
+  input, select, button { font: inherit; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); min-width: 0; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.small { padding: 2px 8px; font-size: 12px; }
+  button.danger { color: var(--bad); }
+  #msg { grid-column: span 2; margin: 0; min-height: 1.5em; font-size: 13px; }
+  #graph { height: 420px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--text-2); font-size: 13px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  @media (max-width: 900px) { .w8, .w6, .w4 { grid-column: span 12; } }
+  @media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } form { grid-template-columns: 1fr; } label.full, #msg { grid-column: span 1; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pharmacy Management System</h1>
+  <p>Live dashboard on Neo4j AuraDB</p>
+</header>
+
+<main>
+  <section class="kpis w12" id="kpis"></section>
+
+  <section class="card w6"><h2>Units sold by medicine</h2><div class="chart"><canvas id="soldChart"></canvas></div></section>
+  <section class="card w6"><h2>Revenue per sale <small>(₹)</small></h2><div class="chart"><canvas id="saleChart"></canvas></div></section>
+
+  <section class="card w8">
+    <h2>Inventory</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Medicine</th><th>Category</th><th>Supplier</th><th class="num">Price</th><th class="num">Stock</th><th>Expiry</th><th></th></tr></thead>
+      <tbody id="inventory"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card w4">
+    <h2 id="formTitle">Add / update medicine</h2>
+    <form id="medForm">
+      <label>Medicine ID<input name="id" type="number" min="1" required></label>
+      <label>Category<input name="category" required></label>
+      <label class="full">Name<input name="name" required></label>
+      <label>Price (₹)<input name="price" type="number" min="0" step="0.01" required></label>
+      <label>Stock<input name="stock" type="number" min="0" required></label>
+      <label>Expiry date<input name="expiry" type="date" required></label>
+      <label>Supplier<select name="supplier" id="supplierSelect"><option value="">(none)</option></select></label>
+      <button class="primary" type="submit">Save</button>
+      <button type="reset">Clear</button>
+      <p id="msg" role="status"></p>
+    </form>
+  </section>
+
+  <section class="card w6"><h2>Low stock <small>(below 80 units)</small></h2><ul class="list" id="lowStock"></ul></section>
+  <section class="card w6"><h2>Expiring before 2028</h2><ul class="list" id="expiring"></ul></section>
+
+  <section class="card w12">
+    <h2>Sales</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Sale</th><th>Date</th><th>Customer</th><th>Handled by</th><th>Payment</th><th class="num">Amount</th></tr></thead>
+      <tbody id="sales"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card w6">
+    <h2>Suppliers</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Supplier</th><th>Phone</th><th class="num">Medicines</th><th>Supplies</th></tr></thead>
+      <tbody id="suppliers"></tbody>
+    </table></div>
+  </section>
+  <section class="card w6">
+    <h2>Prescriptions</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Customer</th><th>Doctor</th><th>Date</th></tr></thead>
+      <tbody id="prescriptions"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card w12">
+    <h2>Purchase trace <small>Customer → Sale → Medicine ← Supplier</small></h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Customer</th><th>Sale</th><th>Medicine</th><th class="num">Qty</th><th>Supplied by</th></tr></thead>
+      <tbody id="history"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card w12">
+    <h2>Pharmacy graph</h2>
+    <div id="graph"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+</main>
+
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inr = v => '₹' + Number(v ?? 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const get = name => fetch('/api/' + name).then(r => { if (!r.ok) throw new Error(name + ': ' + r.status); return r.json(); });
+const rows = (id, data, fn, cols) => document.getElementById(id).innerHTML =
+  data.length ? data.map(fn).join('') : `<tr><td colspan="${cols}" class="empty">No records</td></tr>`;
+const charts = {};
+
+function barChart(id, labels, values, label, fmt) {
+  charts[id]?.destroy();
+  const grid = css('--border'), ink = css('--text-2');
+  charts[id] = new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ label, data: values, backgroundColor: css('--s1'), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 48 }] },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${label}: ${fmt(c.parsed.y)}` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: ink } },
+        y: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: ink, precision: 0 } },
+      },
+    },
+  });
+}
+
+async function load() {
+  const [k, meds, low, exp, top, sales, sups, rx, hist, graph, supList] = await Promise.all(
+    ['kpis','medicines','low_stock','expiring','top_medicines','sales','suppliers','prescriptions','history','graph','supplier_list'].map(get));
+
+  document.getElementById('kpis').innerHTML = [
+    ['Medicines', k.medicines], ['Units in stock', k.units], ['Customers', k.customers],
+    ['Suppliers', k.suppliers], ['Employees', k.employees], ['Sales', k.sales], ['Revenue', inr(k.revenue)],
+  ].map(([l, v]) => `<div class="kpi"><span>${l}</span><b>${esc(v ?? 0)}</b></div>`).join('');
+
+  barChart('soldChart', top.map(r => r.name), top.map(r => r.sold), 'Units sold', v => v);
+  barChart('saleChart', sales.map(r => `Sale ${r.id}`), sales.map(r => r.amount), 'Revenue', inr);
+
+  const lowIds = new Set(low.map(r => r.name)), expIds = new Set(exp.map(r => r.name));
+  rows('inventory', meds, m => `<tr>
+    <td>${m.id}</td><td>${esc(m.name)}${lowIds.has(m.name) ? '<span class="tag warn">Low stock</span>' : ''}</td>
+    <td>${esc(m.category)}</td><td>${esc(m.supplier ?? '—')}</td>
+    <td class="num">${inr(m.price)}</td><td class="num">${m.stock}</td>
+    <td>${esc(m.expiry)}${expIds.has(m.name) ? '<span class="tag bad">Expiring</span>' : ''}</td>
+    <td><button class="small" data-edit="${m.id}">Edit</button> <button class="small danger" data-del="${m.id}">Delete</button></td>
+  </tr>`, 8);
+  window._meds = meds; window._sups = supList;
+
+  document.getElementById('lowStock').innerHTML = low.length
+    ? low.map(r => `<li><span>${esc(r.name)}</span><b>${r.stock} units</b></li>`).join('') : '<li class="empty">All stocked</li>';
+  document.getElementById('expiring').innerHTML = exp.length
+    ? exp.map(r => `<li><span>${esc(r.name)}</span><b>${esc(r.expiry)}</b></li>`).join('') : '<li class="empty">None</li>';
+
+  rows('sales', sales, s => `<tr><td>${s.id}</td><td>${esc(s.date)}</td><td>${esc(s.customer)}</td><td>${esc(s.employee)}</td>
+    <td>${esc(s.mode)} · ${esc(s.status)}</td><td class="num">${inr(s.amount)}</td></tr>`, 6);
+  rows('suppliers', sups, s => `<tr><td>${esc(s.name)}</td><td>${esc(s.phone)}</td><td class="num">${s.medicines}</td>
+    <td>${s.supplies.map(esc).join(', ')}</td></tr>`, 4);
+  rows('prescriptions', rx, p => `<tr><td>${p.id}</td><td>${esc(p.customer)}</td><td>${esc(p.doctor)}</td><td>${esc(p.date)}</td></tr>`, 4);
+  rows('history', hist, h => `<tr><td>${esc(h.customer)}</td><td>${h.sale}</td><td>${esc(h.medicine)}</td>
+    <td class="num">${h.qty}</td><td>${esc(h.supplier)}</td></tr>`, 5);
+
+  const sel = document.getElementById('supplierSelect');
+  sel.innerHTML = '<option value="">(none)</option>' + supList.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+
+  drawGraph(graph);
+}
+
+const GROUPS = ['Supplier', 'Medicine', 'Sale', 'Customer', 'Employee', 'Prescription'];
+let network;
+function drawGraph(g) {
+  const color = Object.fromEntries(GROUPS.map((l, i) => [l, css('--s' + (i + 1))]));
+  const ink = css('--text'), edgeInk = css('--muted');
+  const nodes = g.nodes.map(n => ({ ...n, color: { background: color[n.group], border: color[n.group] },
+                                    font: { color: ink }, shape: 'dot', size: 14 }));
+  const edges = g.edges.map(e => ({ ...e, arrows: 'to', color: edgeInk, font: { color: edgeInk, size: 10, strokeWidth: 0 } }));
+  network?.destroy();
+  network = new vis.Network(document.getElementById('graph'), { nodes, edges },
+    { physics: { stabilization: true, barnesHut: { springLength: 140 } }, interaction: { hover: true } });
+  document.getElementById('legend').innerHTML = GROUPS.map(l => `<span><i style="background:${color[l]}"></i>${l}</span>`).join('');
+}
+
+const form = document.getElementById('medForm'), msg = document.getElementById('msg');
+function say(text, ok) { msg.textContent = text; msg.style.color = ok ? 'var(--text-2)' : 'var(--bad)'; }
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const r = await fetch('/api/medicine', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+  const body = await r.json();
+  if (!r.ok) return say(body.error, false);
+  say('Saved.', true); form.reset(); load();
+});
+
+document.getElementById('inventory').addEventListener('click', async e => {
+  const edit = e.target.dataset.edit, del = e.target.dataset.del;
+  if (edit) {
+    const m = _meds.find(x => String(x.id) === edit);
+    const sup = _sups.find(s => s.name === m.supplier);
+    Object.entries({ id: m.id, name: m.name, category: m.category, price: m.price, stock: m.stock, expiry: m.expiry, supplier: sup?.id ?? '' })
+      .forEach(([k, v]) => form.elements[k].value = v);
+    say(`Editing ${m.name}`, true); form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (del && confirm(`Delete medicine ${del}? This also removes its relationships.`)) {
+    await fetch('/api/medicine/' + del, { method: 'DELETE' }); load();
+  }
+});
+
+load().catch(err => { document.getElementById('kpis').innerHTML = `<div class="kpi"><span>Error</span><b style="font-size:15px">${esc(err.message)}</b></div>`; });
+</script>
+</body>
+</html>
