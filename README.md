@@ -1,6 +1,8 @@
 # Pharmacy Management System – Neo4j Graph Database
 
-A DBMS mini-project that models a pharmacy (medicines, suppliers, customers, employees, prescriptions and sales) as a **property graph in Neo4j AuraDB**, with a live **Flask web dashboard** on top of it.
+A DBMS mini-project that models a pharmacy (medicines, suppliers, customers, employees, prescriptions and sales) as a **property graph in Neo4j AuraDB**, with a live **web dashboard** on top of it, deployed on **Cloudflare Pages**.
+
+**Live demo:** https://pharmacy-dashboard-8gl.pages.dev
 
 This is **Digital Assignment 3** of a three-part project:
 
@@ -58,21 +60,33 @@ Every panel reads live from Neo4j. Nothing is hard-coded.
 ## Tech stack
 
 - **Database:** Neo4j AuraDB (Free tier), Cypher
-- **Backend:** Python, Flask, the official `neo4j` driver
+- **Backend:** a Cloudflare Pages Function in JavaScript. It sends Cypher to Aura over the [Neo4j HTTPS Query API](https://neo4j.com/docs/query-api/current/).
 - **Frontend:** HTML, CSS and JavaScript, with [Chart.js](https://www.chartjs.org/) and [vis-network](https://visjs.github.io/vis-network/) from CDN. No build step.
+- **Hosting:** Cloudflare Pages. Neo4j credentials are stored as encrypted Pages secrets.
+
+### Architecture
+
+```
+Browser ──fetch /api/*──▶ Cloudflare Pages Function ──HTTPS + Cypher──▶ Neo4j AuraDB
+(public/index.html)       (functions/api/[[path]].js)                   (Query API v2)
+```
+
+Cloudflare Workers cannot open Neo4j's Bolt TCP connection, so the function uses Aura's HTTPS Query API. The database, data and Cypher queries are the same either way.
 
 ---
 
 ## Project structure
 
 ```
-├── app.py              # Flask app: Cypher queries exposed as JSON endpoints
-├── templates/
-│   └── index.html      # Dashboard UI
-├── seed.cypher         # Constraints + sample data (DA3 Queries 1–12)
-├── seed.py             # Loads seed.cypher into the database
-├── requirements.txt
-└── .env.example        # Template for Neo4j credentials
+├── public/
+│   └── index.html          # Dashboard UI (sidebar + pages)
+├── functions/api/
+│   └── [[path]].js         # API: Cypher queries exposed as JSON endpoints
+├── wrangler.toml           # Cloudflare Pages config
+├── seed.cypher             # Constraints + sample data (DA3 Queries 1–12)
+├── seed.py                 # Loads seed.cypher into the database
+├── requirements.txt        # Python deps for seed.py only
+└── .env.example            # Template for Neo4j credentials
 ```
 
 ---
@@ -92,26 +106,33 @@ NEO4J_PASSWORD=<password>
 NEO4J_DATABASE=<database>
 ```
 
-`.env` is git-ignored. Never commit it.
+Also copy the same four lines into a file named `.dev.vars`, which `wrangler` reads for local development. Both `.env` and `.dev.vars` are git-ignored. Never commit them.
 
-### 3. Install dependencies
+### 3. Load the sample data
 ```bash
 pip install -r requirements.txt
-```
-
-### 4. Load the sample data
-```bash
 python seed.py
 ```
 Expected output: `Ran 31 statements -> 13 nodes, 12 relationships`. The script uses `MERGE`, so it is safe to re-run.
 
 You can also paste `seed.cypher` into the Aura **Query** tool.
 
-### 5. Run the dashboard
+### 4. Run the dashboard locally
+Requires [Node.js](https://nodejs.org/).
 ```bash
-python app.py
+npx wrangler pages dev
 ```
-Open **http://localhost:5000**.
+Open **http://localhost:8788**.
+
+### 5. Deploy to Cloudflare Pages
+```bash
+npx wrangler login
+npx wrangler pages project create pharmacy-dashboard --production-branch main
+npx wrangler pages secret bulk .dev.vars --project-name pharmacy-dashboard
+npx wrangler pages deploy --project-name pharmacy-dashboard --branch main
+```
+
+> **Note:** Aura Free instances pause after a few days without activity. If the live site shows a database error, resume the instance in the [Aura console](https://console.neo4j.io).
 
 ---
 
@@ -133,7 +154,7 @@ Open **http://localhost:5000**.
 | POST | `/api/medicine` | Create or update a medicine (JSON body) |
 | DELETE | `/api/medicine/<id>` | Delete a medicine and its relationships |
 
-All queries are parameterised. User input is never concatenated into Cypher.
+All queries are parameterised. User input is validated and never concatenated into Cypher.
 
 ---
 
