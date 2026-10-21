@@ -41,7 +41,7 @@ Each key has a uniqueness constraint. The sample dataset has **13 nodes and 12 r
 
 ## Dashboard features
 
-A clean light UI with a sidebar. Each section is its own page: **Overview, Inventory, Add / Update, Alerts, Sales, New sale, Suppliers & Rx, Analytics, Graph**. On phones the sidebar becomes a scrollable top bar.
+A clean light UI with a sidebar. Each section is its own page: **Overview, Inventory, Add / Update, Alerts, Sales, New sale, Employees, Suppliers, Prescriptions, Analytics, Graph**. On phones the sidebar becomes a scrollable top bar.
 
 - **KPI cards:** medicines, units in stock, customers, suppliers, employees, sales and total revenue
 - **Charts:** units sold per medicine, revenue per sale
@@ -51,6 +51,8 @@ A clean light UI with a sidebar. Each section is its own page: **Overview, Inven
 - **Sales:** customer, handling employee, items, payment, and amount (`Σ quantity × price`)
 - **Record a sale** with several medicines. In **one transaction** it creates the `Sale` node, its `MAKES`, `HANDLES` and `CONTAINS {quantity}` relationships, and reduces each medicine's stock. If any item is short of stock, nothing is written.
 - **Update a sale's payment** (mode and status), or **delete a sale**, which returns its items to stock
+- **New or existing customer** when recording a sale. Choosing *+ New customer…* creates the `Customer` node in the same transaction as the sale, so a failed sale never leaves a stray customer behind.
+- **Employees and suppliers:** add and edit (name, 10-digit phone), with IDs assigned automatically. The Employees page shows how many sales each person has handled.
 - **Suppliers** and the medicines they supply, plus **prescriptions** per customer
 - **Purchase trace:** a multi-hop traversal `Customer → Sale → Medicine ← Supplier`
 - **Interactive graph view** of the whole database
@@ -152,10 +154,13 @@ npx wrangler pages deploy --project-name pharmacy-dashboard --branch main
 | GET | `/api/prescriptions` | Customer prescriptions |
 | GET | `/api/history` | Customer → Sale → Medicine ← Supplier traversal |
 | GET | `/api/graph` | Nodes and edges for the graph view |
+| GET | `/api/employees` | Employees with the number of sales handled |
 | GET | `/api/supplier_list`, `/api/customer_list`, `/api/employee_list` | IDs and names for the form dropdowns |
+| POST | `/api/employee`, `/api/supplier` | Add an employee or supplier `{name, phone}` (ID assigned automatically) |
+| PUT | `/api/employee/<id>`, `/api/supplier/<id>` | Edit an employee's or supplier's name and phone |
 | POST | `/api/medicine` | Create or update a medicine (JSON body) |
 | DELETE | `/api/medicine/<id>` | Delete a medicine and its relationships |
-| POST | `/api/sale` | Record a sale: `{customer, employee, date, mode, status, items: [{medicine, qty}]}`. Reduces stock. |
+| POST | `/api/sale` | Record a sale: `{customer, employee, date, mode, status, items: [{medicine, qty}]}`. Reduces stock. Use `customer: "new"` with `new_name` (and optional `new_phone`) to create a customer at the same time. |
 | PUT | `/api/sale/<id>` | Update a sale's payment `{mode, status}` |
 | DELETE | `/api/sale/<id>` | Delete a sale and return its items to stock |
 
