@@ -1,4 +1,4 @@
-// Pharmacy Management System - DA3 seed (Queries 1-12 from the report)
+// Pharmacy Management System - DA3 seed 
 
 // Query 1: Uniqueness constraints
 CREATE CONSTRAINT supplier_id_unique IF NOT EXISTS FOR (s:Supplier) REQUIRE s.supplier_id IS UNIQUE;
