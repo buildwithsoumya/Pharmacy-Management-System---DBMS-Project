@@ -53,6 +53,7 @@ A clean light UI with a sidebar. Each section is its own page: **Overview, Inven
 - **Update a sale's payment** (mode and status), or **delete a sale**, which returns its items to stock
 - **New or existing customer** when recording a sale. Choosing *+ New customer…* creates the `Customer` node in the same transaction as the sale, so a failed sale never leaves a stray customer behind.
 - **Employees and suppliers:** add and edit (name, 10-digit phone), with IDs assigned automatically. The Employees page shows how many sales each person has handled.
+- **Prescriptions:** add and edit (customer, doctor, date). Changing the customer re-links the `HAS_PRESCRIPTION` relationship.
 - **Suppliers** and the medicines they supply, plus **prescriptions** per customer
 - **Purchase trace:** a multi-hop traversal `Customer → Sale → Medicine ← Supplier`
 - **Interactive graph view** of the whole database
@@ -158,6 +159,8 @@ npx wrangler pages deploy --project-name pharmacy-dashboard --branch main
 | GET | `/api/supplier_list`, `/api/customer_list`, `/api/employee_list` | IDs and names for the form dropdowns |
 | POST | `/api/employee`, `/api/supplier` | Add an employee or supplier `{name, phone}` (ID assigned automatically) |
 | PUT | `/api/employee/<id>`, `/api/supplier/<id>` | Edit an employee's or supplier's name and phone |
+| POST | `/api/prescription` | Add a prescription `{customer, doctor, date}` (ID assigned automatically) |
+| PUT | `/api/prescription/<id>` | Edit a prescription; changing `customer` re-links it |
 | POST | `/api/medicine` | Create or update a medicine (JSON body) |
 | DELETE | `/api/medicine/<id>` | Delete a medicine and its relationships |
 | POST | `/api/sale` | Record a sale: `{customer, employee, date, mode, status, items: [{medicine, qty}]}`. Reduces stock. Use `customer: "new"` with `new_name` (and optional `new_phone`) to create a customer at the same time. |
